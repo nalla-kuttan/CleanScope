@@ -30,6 +30,21 @@ public struct ExclusionStore: Sendable {
     try data.write(to: fileURL, options: .atomic)
   }
 
+  public func add(_ rule: ExclusionRule) throws {
+    var rules = try load()
+    let normalizedRulePath = URL(fileURLWithPath: rule.path).standardizedFileURL.path
+    guard
+      !rules.contains(where: {
+        $0.ruleType == rule.ruleType
+          && URL(fileURLWithPath: $0.path).standardizedFileURL.path == normalizedRulePath
+      })
+    else {
+      return
+    }
+    rules.append(rule)
+    try save(rules)
+  }
+
   public func isExcluded(path: String) throws -> Bool {
     let normalized = URL(fileURLWithPath: path).standardizedFileURL.path
     return try load().contains { rule in

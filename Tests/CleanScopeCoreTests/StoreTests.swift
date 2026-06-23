@@ -29,4 +29,17 @@ import Testing
     #expect(try store.isExcluded(path: "/Users/me/Projects/App/.build"))
     #expect(try !store.isExcluded(path: "/Users/me/Downloads/file.zip"))
   }
+
+  @Test func exclusionStoreAddsRulesWithoutDuplicates() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let store = ExclusionStore(fileURL: directory.appendingPathComponent("exclusions.json"))
+    let rule = ExclusionRule(
+      path: "/Users/me/Projects", ruleType: .folderRecursive, reason: "Excluded in results")
+
+    try store.add(rule)
+    try store.add(rule)
+
+    #expect(try store.load().count == 1)
+  }
 }

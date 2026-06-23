@@ -1,3 +1,4 @@
+import AppKit
 import CleanScopeCore
 import SwiftUI
 
@@ -6,54 +7,62 @@ struct ResultsView: View {
   var title: String
   var filter: (ScanResult) -> Bool
   @State private var selectedResult: ScanResult?
-  @State private var showsConfirmation = false
+  @State private var showsReview = false
 
   private var filtered: [ScanResult] {
     model.streamedResults.filter(filter).sorted { $0.sizeBytes > $1.sizeBytes }
   }
 
+  private var totalBytes: Int64 {
+    filtered.reduce(0) { $0 + $1.sizeBytes }
+  }
+
   var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      HStack {
-        Text(title)
-          .font(.largeTitle.bold())
+    VStack(alignment: .leading, spacing: 14) {
+      HStack(alignment: .bottom) {
+        VStack(alignment: .leading, spacing: 3) {
+          Text(title)
+            .font(.system(size: 28, weight: .bold))
+            .foregroundStyle(BrandTheme.deepInk)
+          Text("\(filtered.count) items · \(ByteCount.string(totalBytes))")
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+        }
         Spacer()
         Button {
-          showsConfirmation = true
+          showsReview = true
         } label: {
-          Label("Move to Trash", systemImage: "trash")
+          Label("Review Cleanup", systemImage: "checklist")
         }
+        .buttonStyle(.borderedProminent)
+        .tint(BrandTheme.scopeForest)
         .disabled(model.selection.isEmpty)
       }
 
       if filtered.isEmpty {
         EmptyStateView(
-          title: "No items found",
+          title: "Nothing here right now",
           systemImage: "checkmark.seal",
-          message: "Run a scan or adjust Settings."
+          message: "Run a scan or adjust your scan locations in Settings."
         )
       } else {
         ResultsTable(results: filtered, selectedResult: $selectedResult)
       }
     }
     .padding(24)
+    .background(BrandTheme.clearPaper)
     .sheet(item: $selectedResult) { result in
-      ItemDetailView(result: result)
+      ItemDetailView(result: currentResult(for: result))
     }
-    .confirmationDialog(
-      "Move selected items to Trash?",
-      isPresented: $showsConfirmation,
-      titleVisibility: .visible
-    ) {
-      Button("Move Selected Items to Trash", role: .destructive) {
+    .sheet(isPresented: $showsReview) {
+      CleanupReviewSheet(items: model.selectedResults()) {
         Task { await model.cleanupSelected() }
       }
-      Button("Cancel", role: .cancel) {}
-    } message: {
-      Text(
-        "Items outside Safe to Delete may be skipped or require manual review. CleanScope moves files to Trash by default."
-      )
     }
+  }
+
+  private func currentResult(for result: ScanResult) -> ScanResult {
+    model.streamedResults.first(where: { $0.id == result.id }) ?? result
   }
 }
 
@@ -66,20 +75,29 @@ struct ResultsTable: View {
     Table(results) {
       TableColumn("") { result in
         Toggle(
-          "",
+          "Select \(result.name)",
           isOn: Binding(
             get: { model.selection.contains(result.id) },
             set: { _ in model.toggleSelection(result) }
           )
         )
         .labelsHidden()
-        .disabled(!result.canDelete)
+        .disabled(!result.canDelete || result.isExcluded)
+        .help(result.canDelete ? "Include in cleanup" : "This item requires manual review")
       }
       .width(36)
 
       TableColumn("Name") { result in
-        Button(result.name) {
+        Button {
           selectedResult.wrappedValue = result
+        } label: {
+          HStack(spacing: 6) {
+            Image(systemName: result.itemType == .folder ? "folder" : "doc")
+              .foregroundStyle(result.isExcluded ? Color.secondary : BrandTheme.finderBlue)
+            Text(result.name)
+              .foregroundStyle(result.isExcluded ? Color.secondary : BrandTheme.deepInk)
+              .lineLimit(1)
+          }
         }
         .buttonStyle(.plain)
         .help("View item details")
@@ -87,18 +105,20 @@ struct ResultsTable: View {
 
       TableColumn("Size") { result in
         Text(ByteCount.string(result.sizeBytes))
+          .monospacedDigit()
       }
-      .width(min: 80, ideal: 100)
+      .width(min: 78, ideal: 94)
 
       TableColumn("Category") { result in
         SafetyLabel(category: result.category)
       }
-      .width(min: 130, ideal: 150)
+      .width(min: 132, ideal: 150)
 
-      TableColumn("Confidence") { result in
-        Text(result.confidence.rawValue.capitalized)
+      TableColumn("Modified") { result in
+        Text(result.lastModified?.formatted(date: .abbreviated, time: .omitted) ?? "Unknown")
+          .foregroundStyle(.secondary)
       }
-      .width(min: 80, ideal: 90)
+      .width(min: 88, ideal: 106)
 
       TableColumn("Path") { result in
         Text(result.path)
@@ -106,6 +126,39 @@ struct ResultsTable: View {
           .lineLimit(1)
           .help(result.path)
       }
+
+      TableColumn("") { result in
+        Menu {
+          Button {
+            NSWorkspace.shared.activateFileViewerSelecting([
+              URL(fileURLWithPath: result.normalizedPath)
+            ])
+          } label: {
+            Label("Open in Finder", systemImage: "folder")
+          }
+
+          Button {
+            model.exclude(result)
+          } label: {
+            Label("Exclude from Future Scans", systemImage: "eye.slash")
+          }
+          .disabled(result.isExcluded)
+
+          if result.canDelete {
+            Divider()
+            Button(role: .destructive) {
+              Task { await model.cleanup(result) }
+            } label: {
+              Label("Move to Trash", systemImage: "trash")
+            }
+          }
+        } label: {
+          Image(systemName: "ellipsis.circle")
+        }
+        .menuStyle(.borderlessButton)
+        .help("Item actions")
+      }
+      .width(34)
     }
   }
 }
@@ -118,6 +171,7 @@ struct SafetyLabel: View {
       .font(.caption.weight(.semibold))
       .foregroundStyle(color)
       .lineLimit(1)
+      .accessibilityLabel(label)
   }
 
   private var label: String {
@@ -140,9 +194,9 @@ struct SafetyLabel: View {
 
   private var color: Color {
     switch category {
-    case .safeToDelete: return .green
-    case .probablyUnused: return .yellow
-    case .deleteIfAppUnused: return .orange
+    case .safeToDelete: return BrandTheme.freshLeaf
+    case .probablyUnused: return BrandTheme.sunToken
+    case .deleteIfAppUnused: return BrandTheme.actionCoral
     case .doNotBulkDelete: return .secondary
     }
   }
