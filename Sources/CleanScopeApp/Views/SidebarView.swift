@@ -5,13 +5,31 @@ struct SidebarView: View {
   @EnvironmentObject private var model: AppModel
 
   var body: some View {
-    List(AppModel.Destination.allCases, selection: $model.destination) { destination in
-      Label(destination.rawValue, systemImage: destination.systemImage)
-        .tag(destination)
+    VStack(spacing: 0) {
+      HStack(spacing: 10) {
+        BrandMarkView(size: 36)
+        VStack(alignment: .leading, spacing: 0) {
+          Text("CleanScope")
+            .font(.headline)
+            .foregroundStyle(BrandTheme.deepInk)
+          Text("Make room for what’s next.")
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+        }
+        Spacer()
+      }
+      .padding(.horizontal, 14)
+      .padding(.top, 12)
+      .padding(.bottom, 8)
+
+      List(AppModel.Destination.allCases, selection: $model.destination) { destination in
+        Label(destination.rawValue, systemImage: destination.systemImage)
+          .tag(destination)
+      }
+      .listStyle(.sidebar)
     }
-    .listStyle(.sidebar)
-    .navigationSplitViewColumnWidth(min: 190, ideal: 210, max: 260)
-    .navigationTitle("CleanScope")
+    .tint(BrandTheme.scopeForest)
+    .navigationSplitViewColumnWidth(min: 206, ideal: 224, max: 278)
     .safeAreaInset(edge: .bottom) {
       VStack(alignment: .leading, spacing: 8) {
         HStack {
@@ -31,6 +49,7 @@ struct SidebarView: View {
             )
           }
           .buttonStyle(.borderedProminent)
+          .tint(model.isScanning ? BrandTheme.actionCoral : BrandTheme.scopeForest)
 
           Button {
             NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
@@ -39,12 +58,14 @@ struct SidebarView: View {
           }
           .help("Settings")
         }
-        Text(model.permissionSummary.message)
+
+        Text(model.isScanning ? "Scanning carefully…" : model.permissionSummary.message)
           .font(.caption)
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
       }
-      .padding()
+      .padding(12)
+      .background(.bar)
     }
   }
 }
