@@ -3,6 +3,7 @@ import SwiftUI
 struct BrandMarkView: View {
   var size: CGFloat = 40
   var field: Bool = false
+  var isDecorative = false
 
   var body: some View {
     ZStack {
@@ -45,6 +46,7 @@ struct BrandMarkView: View {
     }
     .frame(width: size, height: size)
     .accessibilityElement(children: .ignore)
+    .accessibilityHidden(isDecorative)
     .accessibilityLabel("CleanScope")
   }
 }

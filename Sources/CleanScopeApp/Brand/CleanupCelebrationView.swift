@@ -8,7 +8,7 @@ struct CleanupCelebrationView: View {
 
   var body: some View {
     HStack(spacing: 20) {
-      BrandMarkView(size: 72, field: true)
+      BrandMarkView(size: 72, field: true, isDecorative: true)
         .scaleEffect(isVisible || reduceMotion ? 1 : 0.92)
         .opacity(isVisible ? 1 : 0)
 

@@ -7,7 +7,7 @@ struct SettingsView: View {
   var body: some View {
     VStack(spacing: 0) {
       HStack(spacing: 12) {
-        BrandMarkView(size: 46, field: true)
+        BrandMarkView(size: 46, field: true, isDecorative: true)
         VStack(alignment: .leading, spacing: 2) {
           Text("CleanScope")
             .font(.title3.bold())

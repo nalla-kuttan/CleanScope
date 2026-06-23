@@ -20,9 +20,10 @@ enum BrandTheme {
   private static func adaptive(light: UInt32, dark: UInt32) -> Color {
     Color(
       nsColor: NSColor(name: nil) { appearance in
-        let isDark =
-          appearance.bestMatch(from: [.darkAqua, .aqua, .accessibilityHighContrastDarkAqua])
-          == .darkAqua
+        let match = appearance.bestMatch(from: [
+          .darkAqua, .aqua, .accessibilityHighContrastDarkAqua,
+        ])
+        let isDark = match == .darkAqua || match == .accessibilityHighContrastDarkAqua
         return nsColor(hex: isDark ? dark : light)
       })
   }

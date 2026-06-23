@@ -1,4 +1,4 @@
-# CleanScope MVP Verification
+# CleanScope Space Garden Verification
 
 ## Automated
 
@@ -35,5 +35,27 @@ interfaces or omits automatic Swift Testing framework paths.
 
 - No scareware language appears in dashboard, results, confirmations, or reports.
 - Safety labels match: Safe to delete, Review recommended, App/tool dependent, Do not bulk delete.
-- Light and dark mode remain readable.
 - Rows do not truncate the category label at the default macOS window size.
+
+## Space Garden UI States
+
+- Dashboard empty state shows the Sprout Lens, practical scan guidance, and Start Scan.
+- Scanning state changes the primary command to Cancel and grows through finite stages.
+- Completed dashboard shows reclaimable space, available space, safe/generated count, review count, permission status, and Quick Wins.
+- Permission-limited state exposes expandable Full Disk Access steps.
+- Safe Cleanup selection uses both a checkmark and state tint; risky rows remain disabled.
+- Review sheet names Trash and shows selected item count, bytes, and category breakdown.
+- Item detail exposes Finder, Exclude, and Move to Trash only when operational.
+- Cleanup report shows before/after availability plus deleted, skipped, blocked, and failed outcomes, including zero states.
+- Settings retains native toggles and stepper beneath the compact product header.
+
+## Appearance and Accessibility
+
+- Light mode palette maintains contrast and does not rely on color alone for safety.
+- Dark mode palette maintains contrast across dashboard, results, sheets, settings, and report.
+- Reduce Motion removes scale transforms and uses immediate state changes or crossfades.
+- Every icon-only button has an accessibility label or help text.
+- Decorative Sprout Lens marks are hidden from VoiceOver; meaningful standalone marks announce CleanScope.
+- Default 1040 × 680 window shows the dashboard header, growth surface, metrics, permission banner, and Quick Wins heading without overlap.
+- Expanded window keeps content constrained and readable rather than stretching tables or copy excessively.
+- The custom app icon appears in Finder, the app bundle, and the Dock.

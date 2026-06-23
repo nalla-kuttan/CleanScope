@@ -7,7 +7,7 @@ struct SidebarView: View {
   var body: some View {
     VStack(spacing: 0) {
       HStack(spacing: 10) {
-        BrandMarkView(size: 36)
+        BrandMarkView(size: 36, isDecorative: true)
         VStack(alignment: .leading, spacing: 0) {
           Text("CleanScope")
             .font(.headline)

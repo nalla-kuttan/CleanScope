@@ -107,7 +107,7 @@ struct DashboardView: View {
 
   private var header: some View {
     HStack(alignment: .center, spacing: 14) {
-      BrandMarkView(size: 54, field: true)
+      BrandMarkView(size: 54, field: true, isDecorative: true)
       VStack(alignment: .leading, spacing: 3) {
         Text("Your Mac has room to grow.")
           .font(.system(size: 28, weight: .bold))
