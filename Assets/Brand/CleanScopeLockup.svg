@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 360" role="img" aria-labelledby="title">
+  <title id="title">CleanScope, Make room for what’s next.</title>
+  <g transform="translate(32 28) scale(.29)">
+    <g fill="none" stroke="#176F5D" stroke-linecap="round">
+      <circle cx="448" cy="494" r="242" stroke-width="72"/>
+      <path d="M616 666 796 846" stroke-width="88"/>
+      <path d="M448 628 C438 514 458 456 448 384" stroke-width="38"/>
+    </g>
+    <path fill="#50B77A" d="M416 410 C334 304 244 332 274 424 C306 520 388 504 416 410 Z"/>
+    <path fill="#50B77A" d="M484 364 C566 254 664 282 630 380 C596 476 512 458 484 364 Z"/>
+  </g>
+  <text x="336" y="178" fill="#17231F" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif" font-size="112" font-weight="700" letter-spacing="0">CleanScope</text>
+  <text x="342" y="252" fill="#176F5D" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif" font-size="40" font-weight="500" letter-spacing="0">Make room for what’s next.</text>
+</svg>
