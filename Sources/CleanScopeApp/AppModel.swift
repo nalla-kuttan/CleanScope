@@ -111,16 +111,38 @@ final class AppModel: ObservableObject {
   }
 
   func toggleSelection(_ result: ScanResult) {
-    guard result.canDelete else { return }
-    if selection.contains(result.id) {
+    setSelection(!selection.contains(result.id), for: result)
+  }
+
+  func setSelection(_ isSelected: Bool, for result: ScanResult) {
+    guard result.canDelete, !result.isExcluded else {
       selection.remove(result.id)
-    } else {
+      return
+    }
+
+    if isSelected {
       selection.insert(result.id)
+    } else {
+      selection.remove(result.id)
     }
   }
 
+  func setSelection(_ isSelected: Bool, for results: [ScanResult]) {
+    selection = ResultSelection.updating(selection, with: results, isSelected: isSelected)
+  }
+
+  func clearSelection() {
+    selection.removeAll()
+  }
+
   func selectedResults() -> [ScanResult] {
-    streamedResults.filter { selection.contains($0.id) }
+    streamedResults.filter {
+      selection.contains($0.id) && $0.canDelete && !$0.isExcluded
+    }
+  }
+
+  var selectionSummary: SelectionSummary {
+    SelectionSummary(items: selectedResults())
   }
 
   func cleanupSelected() async {
