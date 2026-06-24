@@ -53,18 +53,21 @@ final class AppModel: ObservableObject {
   private let repository: ScanRepository
   private let permissionService: PermissionService
   private let deletionService: DeletionService
+  private let exclusionStore: ExclusionStore
   private var scanner: ScannerService?
 
   init(
     settingsStore: SettingsStore = SettingsStore(),
     repository: ScanRepository = ScanRepository(),
     permissionService: PermissionService = PermissionService(),
-    deletionService: DeletionService = DeletionService()
+    deletionService: DeletionService = DeletionService(),
+    exclusionStore: ExclusionStore = ExclusionStore()
   ) {
     self.settingsStore = settingsStore
     self.repository = repository
     self.permissionService = permissionService
     self.deletionService = deletionService
+    self.exclusionStore = exclusionStore
     settings = (try? settingsStore.load()) ?? .default
     session = try? repository.loadLatest()
     streamedResults = session?.results ?? []
@@ -126,6 +129,38 @@ final class AppModel: ObservableObject {
     destination = .cleanupHistory
   }
 
+  func cleanup(_ result: ScanResult) async {
+    guard result.canDelete else { return }
+    cleanupSession = await deletionService.cleanup(selected: [result])
+    selection.remove(result.id)
+    destination = .cleanupHistory
+  }
+
+  func exclude(_ result: ScanResult) {
+    let ruleType: ExclusionRuleType =
+      result.itemType == .folder ? .folderRecursive : .exactPath
+    let rule = ExclusionRule(
+      path: result.normalizedPath,
+      ruleType: ruleType,
+      reason: "Excluded from CleanScope results"
+    )
+
+    do {
+      try exclusionStore.add(rule)
+      selection.remove(result.id)
+      streamedResults = streamedResults.map { item in
+        guard exclusionRule(rule, matches: item.normalizedPath) else { return item }
+        var excluded = item
+        excluded.isExcluded = true
+        excluded.canDelete = false
+        excluded.deletionMethod = .notAllowed
+        return excluded
+      }
+    } catch {
+      return
+    }
+  }
+
   private func filteredLocations(for mode: ScanMode) -> [String] {
     ScanLocations.recommended(mode: mode).filter { path in
       if !settings.scanDownloads && path.localizedCaseInsensitiveContains("/Downloads") {
@@ -139,6 +174,21 @@ final class AppModel: ObservableObject {
         return false
       }
       return true
+    }
+  }
+
+  private func exclusionRule(_ rule: ExclusionRule, matches path: String) -> Bool {
+    let rulePath = URL(fileURLWithPath: rule.path).standardizedFileURL.path
+    let normalized = URL(fileURLWithPath: path).standardizedFileURL.path
+    switch rule.ruleType {
+    case .exactPath:
+      return normalized == rulePath
+    case .folderRecursive:
+      return normalized == rulePath || normalized.hasPrefix(rulePath + "/")
+    case .pattern:
+      return normalized.localizedCaseInsensitiveContains(rule.path)
+    case .category:
+      return false
     }
   }
 }

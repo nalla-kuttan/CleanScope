@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title">
+  <title id="title">CleanScope Sprout Lens</title>
+  <g fill="none" stroke="#176F5D" stroke-linecap="round">
+    <circle cx="448" cy="494" r="242" stroke-width="72"/>
+    <path d="M616 666 796 846" stroke-width="88"/>
+    <path d="M448 628 C438 514 458 456 448 384" stroke-width="38"/>
+  </g>
+  <path fill="#50B77A" d="M416 410 C334 304 244 332 274 424 C306 520 388 504 416 410 Z"/>
+  <path fill="#50B77A" d="M484 364 C566 254 664 282 630 380 C596 476 512 458 484 364 Z"/>
+</svg>
