@@ -7,6 +7,7 @@ final class AppModel: ObservableObject {
   enum Destination: String, CaseIterable, Identifiable {
     case dashboard = "Dashboard"
     case safeCleanup = "Safe Cleanup"
+    case readyToDelete = "Ready to Delete"
     case largeFiles = "Large Files"
     case hiddenFolders = "Hidden Folders"
     case developerFiles = "Developer Files"
@@ -22,6 +23,7 @@ final class AppModel: ObservableObject {
       switch self {
       case .dashboard: return "chart.bar.xaxis"
       case .safeCleanup: return "checkmark.shield"
+      case .readyToDelete: return "externaldrive.badge.checkmark"
       case .largeFiles: return "externaldrive.fill"
       case .hiddenFolders: return "eye.slash"
       case .developerFiles: return "hammer"

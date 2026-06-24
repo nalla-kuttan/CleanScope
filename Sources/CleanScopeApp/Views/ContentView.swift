@@ -1,3 +1,4 @@
+import CleanScopeCore
 import SwiftUI
 
 struct ContentView: View {
@@ -12,6 +13,15 @@ struct ContentView: View {
         DashboardView()
       case .safeCleanup:
         ResultsView(title: "Safe Cleanup", filter: { $0.category == .safeToDelete })
+      case .readyToDelete:
+        ResultsView(
+          title: "Ready to Delete",
+          filter: ResultPresentation.isReadyToDeleteCache,
+          subtitle: "High-confidence cache files that apps can recreate.",
+          emptyTitle: "No cache files are ready",
+          emptyMessage:
+            "Run a scan to look for high-confidence cache files that can safely move to Trash."
+        )
       case .largeFiles:
         ResultsView(
           title: "Large Files", filter: { $0.sizeBytes >= model.settings.largeFileThresholdBytes })

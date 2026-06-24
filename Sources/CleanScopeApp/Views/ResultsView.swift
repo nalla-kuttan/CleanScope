@@ -6,6 +6,9 @@ struct ResultsView: View {
   @EnvironmentObject private var model: AppModel
   var title: String
   var filter: (ScanResult) -> Bool
+  var subtitle: String? = nil
+  var emptyTitle = "Nothing here right now"
+  var emptyMessage = "Run a scan or adjust your scan locations in Settings."
   @State private var selectedResult: ScanResult?
   @State private var showsReview = false
   @State private var rangeAnchorID: String?
@@ -29,26 +32,45 @@ struct ResultsView: View {
           Text(title)
             .font(.system(size: 28, weight: .bold))
             .foregroundStyle(BrandTheme.deepInk)
+          if let subtitle {
+            Text(subtitle)
+              .font(.subheadline)
+              .foregroundStyle(.secondary)
+          }
           Text("\(filtered.count) items · \(ByteCount.string(totalBytes))")
             .font(.subheadline)
             .foregroundStyle(.secondary)
         }
         Spacer()
-        Button {
-          showsReview = true
-        } label: {
-          Label("Review Cleanup", systemImage: "checklist")
+
+        if model.selectionSummary.itemCount > 0 {
+          HStack(spacing: 10) {
+            Text(
+              "\(model.selectionSummary.itemCount) selected · "
+                + ByteCount.string(model.selectionSummary.totalBytes)
+            )
+            .font(.subheadline.weight(.medium))
+            .foregroundStyle(.secondary)
+            .monospacedDigit()
+
+            Button("Clear") {
+              model.clearSelection()
+              rangeAnchorID = nil
+            }
+
+            reviewButton
+          }
+        } else {
+          reviewButton
+            .disabled(true)
         }
-        .buttonStyle(.borderedProminent)
-        .tint(BrandTheme.scopeForest)
-        .disabled(model.selection.isEmpty)
       }
 
       if filtered.isEmpty {
         EmptyStateView(
-          title: "Nothing here right now",
+          title: emptyTitle,
           systemImage: "checkmark.seal",
-          message: "Run a scan or adjust your scan locations in Settings."
+          message: emptyMessage
         )
       } else {
         ResultsTable(
@@ -78,6 +100,16 @@ struct ResultsView: View {
 
   private func currentResult(for result: ScanResult) -> ScanResult {
     model.streamedResults.first(where: { $0.id == result.id }) ?? result
+  }
+
+  private var reviewButton: some View {
+    Button {
+      showsReview = true
+    } label: {
+      Label("Review Cleanup", systemImage: "checklist")
+    }
+    .buttonStyle(.borderedProminent)
+    .tint(BrandTheme.scopeForest)
   }
 
   private func toggleAllVisible() {
