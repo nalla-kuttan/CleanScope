@@ -59,3 +59,19 @@ interfaces or omits automatic Swift Testing framework paths.
 - Default 1040 × 680 window shows the dashboard header, growth surface, metrics, permission banner, and Quick Wins heading without overlap.
 - Expanded window keeps content constrained and readable rather than stretching tables or copy excessively.
 - The custom app icon appears in Finder, the app bundle, and the Dock.
+
+## 2026-06-24 — Bulk selection and ready cache
+
+- `./script/swiftpm.sh test`: passed with 46 tests.
+- `./script/swiftpm.sh build`: passed.
+- `./script/build_and_run.sh --verify`: passed and launched the staged app bundle.
+- Ready to Delete: verified in the live app with 2,709 high-confidence cache results; sampled paths were under recognized cache locations.
+- Cache predicate: automated tests cover Library caches, package-manager caches, logs, Trash, generated folders, protected items, excluded items, and lower-confidence items.
+- Select all visible: verified live for unchecked and checked states; the selection summary updated to 2,709 items and 21.81 GB.
+- Clear selection: verified live; the review action returned to its disabled state.
+- Mixed-state and eligible range calculations: covered by automated presentation tests, including ineligible rows within a range.
+- Shift-click handling: implemented through the native event modifier and eligible range helper; direct modifier-key UI automation was unavailable in this runtime.
+- Cleanup review payload: verified live without confirming deletion; the sheet showed 2,709 selected Safe to delete items and 21.81 GB, then was cancelled.
+- Accessibility: live accessibility output exposed Select/Deselect all labels, selected values, disabled review state, and individual row selection values.
+- Layout: verified in the default expanded window with the Ready to Delete subtitle, selection control, summary actions, table columns, and long paths visible without overlap.
+- Safety: no cleanup confirmation was activated and no files were moved to Trash during verification.

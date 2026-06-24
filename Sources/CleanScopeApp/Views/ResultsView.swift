@@ -177,7 +177,9 @@ struct ResultsTable: View {
           SelectionCheckbox(
             state: model.selection.contains(result.id) ? .on : .off,
             isEnabled: result.canDelete && !result.isExcluded,
-            accessibilityLabel: "Select \(result.name)"
+            accessibilityLabel: model.selection.contains(result.id)
+              ? "Deselect \(result.name)"
+              : "Select \(result.name)"
           ) { usesRangeSelection in
             if let onSelect {
               onSelect(result, usesRangeSelection)
