@@ -8,6 +8,7 @@ struct ResultsView: View {
   var filter: (ScanResult) -> Bool
   @State private var selectedResult: ScanResult?
   @State private var showsReview = false
+  @State private var rangeAnchorID: String?
 
   private var filtered: [ScanResult] {
     model.streamedResults.filter(filter).sorted { $0.sizeBytes > $1.sizeBytes }
@@ -15,6 +16,10 @@ struct ResultsView: View {
 
   private var totalBytes: Int64 {
     filtered.reduce(0) { $0 + $1.sizeBytes }
+  }
+
+  private var selectionState: VisibleSelectionState {
+    ResultSelection.state(visible: filtered, selectedIDs: model.selection)
   }
 
   var body: some View {
@@ -46,7 +51,12 @@ struct ResultsView: View {
           message: "Run a scan or adjust your scan locations in Settings."
         )
       } else {
-        ResultsTable(results: filtered, selectedResult: $selectedResult)
+        ResultsTable(
+          results: filtered,
+          selectedResult: $selectedResult,
+          onSelect: select,
+          onToggleAll: toggleAllVisible
+        )
       }
     }
     .padding(24)
@@ -59,10 +69,42 @@ struct ResultsView: View {
         Task { await model.cleanupSelected() }
       }
     }
+    .onChange(of: filtered.map(\.id)) { visibleIDs in
+      if let rangeAnchorID, !visibleIDs.contains(rangeAnchorID) {
+        self.rangeAnchorID = nil
+      }
+    }
   }
 
   private func currentResult(for result: ScanResult) -> ScanResult {
     model.streamedResults.first(where: { $0.id == result.id }) ?? result
+  }
+
+  private func toggleAllVisible() {
+    model.setSelection(selectionState != .all, for: filtered)
+  }
+
+  private func select(_ result: ScanResult, usingRange: Bool) {
+    let shouldSelect = !model.selection.contains(result.id)
+
+    if usingRange, let rangeAnchorID {
+      let ids = Set(
+        ResultSelection.eligibleIDs(
+          in: filtered,
+          from: rangeAnchorID,
+          through: result.id
+        ))
+      let rangeItems = filtered.filter { ids.contains($0.id) }
+      if rangeItems.isEmpty {
+        model.setSelection(shouldSelect, for: result)
+      } else {
+        model.setSelection(shouldSelect, for: rangeItems)
+      }
+    } else {
+      model.setSelection(shouldSelect, for: result)
+    }
+
+    rangeAnchorID = result.id
   }
 }
 
@@ -70,95 +112,132 @@ struct ResultsTable: View {
   @EnvironmentObject private var model: AppModel
   var results: [ScanResult]
   var selectedResult: Binding<ScanResult?> = .constant(nil)
+  var showsBulkSelection = true
+  var onSelect: ((ScanResult, Bool) -> Void)?
+  var onToggleAll: (() -> Void)?
+
+  private var visibleSelectionState: VisibleSelectionState {
+    ResultSelection.state(visible: results, selectedIDs: model.selection)
+  }
 
   var body: some View {
-    Table(results) {
-      TableColumn("") { result in
-        Toggle(
-          "Select \(result.name)",
-          isOn: Binding(
-            get: { model.selection.contains(result.id) },
-            set: { _ in model.toggleSelection(result) }
-          )
-        )
-        .labelsHidden()
-        .disabled(!result.canDelete || result.isExcluded)
-        .help(result.canDelete ? "Include in cleanup" : "This item requires manual review")
-      }
-      .width(36)
-
-      TableColumn("Name") { result in
-        Button {
-          selectedResult.wrappedValue = result
-        } label: {
-          HStack(spacing: 6) {
-            Image(systemName: result.itemType == .folder ? "folder" : "doc")
-              .foregroundStyle(result.isExcluded ? Color.secondary : BrandTheme.finderBlue)
-            Text(result.name)
-              .foregroundStyle(result.isExcluded ? Color.secondary : BrandTheme.deepInk)
-              .lineLimit(1)
+    VStack(alignment: .leading, spacing: 6) {
+      if showsBulkSelection {
+        HStack(spacing: 6) {
+          SelectionCheckbox(
+            state: checkboxState(visibleSelectionState),
+            isEnabled: !ResultSelection.eligible(results).isEmpty,
+            accessibilityLabel: visibleSelectionState == .all
+              ? "Deselect all eligible visible items"
+              : "Select all eligible visible items"
+          ) { _ in
+            onToggleAll?()
           }
+          Text(visibleSelectionState == .all ? "Deselect all visible" : "Select all visible")
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
-        .buttonStyle(.plain)
-        .help("View item details")
+        .padding(.leading, 8)
       }
 
-      TableColumn("Size") { result in
-        Text(ByteCount.string(result.sizeBytes))
-          .monospacedDigit()
-      }
-      .width(min: 78, ideal: 94)
-
-      TableColumn("Category") { result in
-        SafetyLabel(category: result.category)
-      }
-      .width(min: 132, ideal: 150)
-
-      TableColumn("Modified") { result in
-        Text(result.lastModified?.formatted(date: .abbreviated, time: .omitted) ?? "Unknown")
-          .foregroundStyle(.secondary)
-      }
-      .width(min: 88, ideal: 106)
-
-      TableColumn("Path") { result in
-        Text(result.path)
-          .foregroundStyle(.secondary)
-          .lineLimit(1)
-          .help(result.path)
-      }
-
-      TableColumn("") { result in
-        Menu {
-          Button {
-            NSWorkspace.shared.activateFileViewerSelecting([
-              URL(fileURLWithPath: result.normalizedPath)
-            ])
-          } label: {
-            Label("Open in Finder", systemImage: "folder")
-          }
-
-          Button {
-            model.exclude(result)
-          } label: {
-            Label("Exclude from Future Scans", systemImage: "eye.slash")
-          }
-          .disabled(result.isExcluded)
-
-          if result.canDelete {
-            Divider()
-            Button(role: .destructive) {
-              Task { await model.cleanup(result) }
-            } label: {
-              Label("Move to Trash", systemImage: "trash")
+      Table(results) {
+        TableColumn("") { result in
+          SelectionCheckbox(
+            state: model.selection.contains(result.id) ? .on : .off,
+            isEnabled: result.canDelete && !result.isExcluded,
+            accessibilityLabel: "Select \(result.name)"
+          ) { usesRangeSelection in
+            if let onSelect {
+              onSelect(result, usesRangeSelection)
+            } else {
+              model.toggleSelection(result)
             }
           }
-        } label: {
-          Image(systemName: "ellipsis.circle")
+          .help(result.canDelete ? "Include in cleanup" : "This item requires manual review")
         }
-        .menuStyle(.borderlessButton)
-        .help("Item actions")
+        .width(36)
+
+        TableColumn("Name") { result in
+          Button {
+            selectedResult.wrappedValue = result
+          } label: {
+            HStack(spacing: 6) {
+              Image(systemName: result.itemType == .folder ? "folder" : "doc")
+                .foregroundStyle(result.isExcluded ? Color.secondary : BrandTheme.finderBlue)
+              Text(result.name)
+                .foregroundStyle(result.isExcluded ? Color.secondary : BrandTheme.deepInk)
+                .lineLimit(1)
+            }
+          }
+          .buttonStyle(.plain)
+          .help("View item details")
+        }
+
+        TableColumn("Size") { result in
+          Text(ByteCount.string(result.sizeBytes))
+            .monospacedDigit()
+        }
+        .width(min: 78, ideal: 94)
+
+        TableColumn("Category") { result in
+          SafetyLabel(category: result.category)
+        }
+        .width(min: 132, ideal: 150)
+
+        TableColumn("Modified") { result in
+          Text(result.lastModified?.formatted(date: .abbreviated, time: .omitted) ?? "Unknown")
+            .foregroundStyle(.secondary)
+        }
+        .width(min: 88, ideal: 106)
+
+        TableColumn("Path") { result in
+          Text(result.path)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .help(result.path)
+        }
+
+        TableColumn("") { result in
+          Menu {
+            Button {
+              NSWorkspace.shared.activateFileViewerSelecting([
+                URL(fileURLWithPath: result.normalizedPath)
+              ])
+            } label: {
+              Label("Open in Finder", systemImage: "folder")
+            }
+
+            Button {
+              model.exclude(result)
+            } label: {
+              Label("Exclude from Future Scans", systemImage: "eye.slash")
+            }
+            .disabled(result.isExcluded)
+
+            if result.canDelete {
+              Divider()
+              Button(role: .destructive) {
+                Task { await model.cleanup(result) }
+              } label: {
+                Label("Move to Trash", systemImage: "trash")
+              }
+            }
+          } label: {
+            Image(systemName: "ellipsis.circle")
+          }
+          .menuStyle(.borderlessButton)
+          .help("Item actions")
+        }
+        .width(34)
       }
-      .width(34)
+    }
+  }
+
+  private func checkboxState(_ state: VisibleSelectionState) -> SelectionCheckbox.State {
+    switch state {
+    case .none: return .off
+    case .some: return .mixed
+    case .all: return .on
     }
   }
 }

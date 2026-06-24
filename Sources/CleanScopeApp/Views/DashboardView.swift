@@ -91,7 +91,11 @@ struct DashboardView: View {
             )
             .frame(minHeight: 180)
           } else {
-            ResultsTable(results: quickWins, selectedResult: $selectedResult)
+            ResultsTable(
+              results: quickWins,
+              selectedResult: $selectedResult,
+              showsBulkSelection: false
+            )
               .frame(minHeight: 220)
           }
         }
