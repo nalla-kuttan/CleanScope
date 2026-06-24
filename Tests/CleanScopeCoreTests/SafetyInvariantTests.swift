@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 
 @testable import CleanScopeCore
@@ -26,6 +27,25 @@ import Testing
       let result = service.classify(
         ClassifiedItemInput(path: path, sizeBytes: 10_000_000_000, itemType: .folder))
       #expect(result.category != .safeToDelete, Comment(rawValue: path))
+    }
+  }
+
+  @Test func ageNeverOverridesSyncedOrSourceSafety() {
+    let service = ClassificationService(now: { ClassificationFixtures.referenceDate })
+    let paths = [
+      "/Users/me/Dropbox/Downloads/archive.zip",
+      "/Users/me/project/Sources/archive.zip",
+    ]
+
+    for path in paths {
+      let result = service.classify(
+        ClassifiedItemInput(
+          path: path,
+          sizeBytes: 100,
+          itemType: .file,
+          lastModified: ClassificationFixtures.date(daysAgo: 500)
+        ))
+      #expect(result.category == .doNotBulkDelete, Comment(rawValue: path))
     }
   }
 

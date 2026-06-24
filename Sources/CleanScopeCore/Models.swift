@@ -318,35 +318,50 @@ public struct ExclusionRule: Identifiable, Codable, Equatable, Sendable {
 }
 
 public struct ClassificationRule: Identifiable, Codable, Equatable, Sendable {
-  public enum MatchType: String, Codable, Sendable {
-    case path
-    case name
-    case `extension`
-    case folder
-    case tool
+  public indirect enum Matcher: Codable, Equatable, Sendable {
+    case pathContains(String)
+    case pathComponent(String)
+    case nameEquals(String)
+    case extensionIn([String])
+    case itemType(ItemType)
+    case modifiedAtLeastDaysAgo(Int)
+    case all([Matcher])
+    case any([Matcher])
   }
 
   public var id: String
   public var name: String
-  public var matchType: MatchType
-  public var pattern: String
+  public var matcher: Matcher
   public var category: SafetyCategory
   public var confidence: Confidence
+  public var specificity: Int
   public var reason: String
   public var riskNote: String
+  public var ownerApp: String?
+  public var ownerTool: String?
 
   public init(
-    id: String = UUID().uuidString, name: String, matchType: MatchType, pattern: String,
-    category: SafetyCategory, confidence: Confidence, reason: String, riskNote: String
+    id: String,
+    name: String,
+    matcher: Matcher,
+    category: SafetyCategory,
+    confidence: Confidence,
+    specificity: Int,
+    reason: String,
+    riskNote: String,
+    ownerApp: String? = nil,
+    ownerTool: String? = nil
   ) {
     self.id = id
     self.name = name
-    self.matchType = matchType
-    self.pattern = pattern
+    self.matcher = matcher
     self.category = category
     self.confidence = confidence
+    self.specificity = specificity
     self.reason = reason
     self.riskNote = riskNote
+    self.ownerApp = ownerApp
+    self.ownerTool = ownerTool
   }
 }
 
