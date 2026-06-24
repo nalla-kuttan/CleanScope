@@ -31,3 +31,76 @@ public enum StoragePresentation {
     return 3
   }
 }
+
+public enum ResultPresentation {
+  public static func isReadyToDeleteCache(_ result: ScanResult) -> Bool {
+    guard
+      result.category == .safeToDelete,
+      result.confidence == .high,
+      result.canDelete,
+      !result.isExcluded
+    else { return false }
+
+    let path = result.normalizedPath.lowercased()
+    let components = Set(
+      URL(fileURLWithPath: result.normalizedPath).pathComponents.map { $0.lowercased() })
+
+    return path.contains("/library/caches/")
+      || path.contains("/.cache/")
+      || components.contains(".npm")
+      || components.contains(".yarn")
+      || components.contains(".pnpm-store")
+      || path.contains("/library/caches/pip")
+  }
+}
+
+public enum VisibleSelectionState: Equatable, Sendable {
+  case none
+  case some
+  case all
+}
+
+public enum ResultSelection {
+  public static func eligible(_ results: [ScanResult]) -> [ScanResult] {
+    results.filter { $0.canDelete && !$0.isExcluded }
+  }
+
+  public static func state(
+    visible results: [ScanResult],
+    selectedIDs: Set<String>
+  ) -> VisibleSelectionState {
+    let ids = Set(eligible(results).map(\.id))
+    guard !ids.isEmpty else { return .none }
+    let selectedVisible = ids.intersection(selectedIDs)
+    if selectedVisible.isEmpty { return .none }
+    return selectedVisible == ids ? .all : .some
+  }
+
+  public static func eligibleIDs(
+    in results: [ScanResult],
+    from anchorID: String,
+    through targetID: String
+  ) -> [String] {
+    guard
+      let anchor = results.firstIndex(where: { $0.id == anchorID }),
+      let target = results.firstIndex(where: { $0.id == targetID })
+    else { return [] }
+
+    let bounds = min(anchor, target)...max(anchor, target)
+    return results[bounds]
+      .filter { $0.canDelete && !$0.isExcluded }
+      .map(\.id)
+  }
+
+  public static func updating(
+    _ selection: Set<String>,
+    with results: [ScanResult],
+    isSelected: Bool
+  ) -> Set<String> {
+    let ids = Set(eligible(results).map(\.id))
+    if isSelected {
+      return selection.union(ids)
+    }
+    return selection.subtracting(ids)
+  }
+}
