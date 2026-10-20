@@ -26,8 +26,14 @@ private let hoverPixels = 128
 private let hoverFrameCount = 18
 /// Hover frame n samples the action at t = n · 0.6 s / 17, from 0 s to 0.6 s inclusive.
 private let hoverDuration = 0.6
-/// Hover intensity used for the hover frames (the board's `h`). The stills use t = 0, h = 0.
-private let hoverIntensity = 1.0
+
+/// Hover intensity (the board's `h`) at time `t` of the hover frames. The board eases `h` toward 1
+/// as `1 − 0.02^t`; this is the same curve over the 0.6 s of frames, normalised so frame 00 has
+/// h = 0 (identical to the still, which uses t = 0, h = 0) and frame 17 has h = 1. The app plays
+/// the frames once and rests on frame 17 while hovered.
+private func hoverIntensity(at t: Double) -> Double {
+  (1 - pow(0.02, t / hoverDuration)) / (1 - 0.02)
+}
 
 // MARK: - Palette and material
 
@@ -771,7 +777,7 @@ for key in iconKeys {
   }
   for frame in 0..<hoverFrameCount {
     let t = Double(frame) * hoverDuration / Double(hoverFrameCount - 1)
-    model.update(t, hoverIntensity)
+    model.update(t, hoverIntensity(at: t))
     writePNG(
       render(renderer, pixels: hoverPixels),
       named: String(format: "%@-hover-%02d.png", key, frame))
