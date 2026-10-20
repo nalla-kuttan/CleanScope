@@ -32,6 +32,7 @@ final class AppModel: ObservableObject {
     case backgroundItems = "Background Items"
     case memory = "Memory"
     case protection = "Protection"
+    case privacy = "Privacy"
     case cleanupHistory = "Cleanup History"
     case settings = "Settings"
 
@@ -40,7 +41,7 @@ final class AppModel: ObservableObject {
     var section: Section {
       switch self {
       case .cleanupHistory, .settings: return .history
-      case .protection: return .protection
+      case .protection, .privacy: return .protection
       case .maintenance, .loginItems, .backgroundItems, .memory: return .performance
       default: return .storage
       }
@@ -64,6 +65,7 @@ final class AppModel: ObservableObject {
       case .backgroundItems: return "gearshape.2"
       case .memory: return "memorychip"
       case .protection: return "shield.lefthalf.filled"
+      case .privacy: return "hand.raised"
       case .cleanupHistory: return "clock.arrow.circlepath"
       case .settings: return "gearshape"
       }

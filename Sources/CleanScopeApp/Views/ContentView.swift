@@ -81,6 +81,8 @@ struct ContentView: View {
       MemoryView()
     case .protection:
       ProtectionView()
+    case .privacy:
+      PrivacyView()
     case .cleanupHistory:
       CleanupReportView()
     case .settings:
