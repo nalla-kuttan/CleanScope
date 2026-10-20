@@ -98,6 +98,14 @@ struct SettingsView: View {
           }
         }
 
+        Section("Protection") {
+          Toggle("Real-time protection while CleanScope is open", isOn: $model.settings.realTimeProtectionEnabled)
+          Text("Watches Downloads, background items and browser extensions, and checks apps when they first open.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+          TrustedTeamsEditor(teamIDs: $model.settings.trustedTeamIDs)
+        }
+
         Section("System-managed space") {
           Toggle(
             "Offer to thin local Time Machine snapshots",
@@ -127,5 +135,42 @@ struct SettingsView: View {
       .formStyle(.grouped)
     }
     .background(BrandTheme.clearPaper)
+  }
+}
+
+/// Developers whose signed apps are never reported.
+private struct TrustedTeamsEditor: View {
+  @Binding var teamIDs: [String]
+  @State private var draft = ""
+
+  private var normalizedDraft: String {
+    draft.trimmingCharacters(in: .whitespaces).uppercased()
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      Text("Trusted developer Team IDs")
+      ForEach(teamIDs, id: \.self) { id in
+        HStack {
+          Text(id).monospaced()
+          Spacer()
+          Button("Remove") { teamIDs.removeAll { $0 == id } }
+            .controlSize(.small)
+        }
+      }
+      HStack {
+        TextField("Team ID, for example ABCDE12345", text: $draft)
+          .onSubmit(add)
+        Button("Add", action: add)
+          .disabled(normalizedDraft.count != 10 || teamIDs.contains(normalizedDraft))
+      }
+    }
+  }
+
+  private func add() {
+    let id = normalizedDraft
+    guard id.count == 10, !teamIDs.contains(id) else { return }
+    teamIDs.append(id)
+    draft = ""
   }
 }

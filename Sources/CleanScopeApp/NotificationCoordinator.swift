@@ -12,6 +12,7 @@ final class NotificationCoordinator: NSObject, ObservableObject, UNUserNotificat
     case open(AppModel.Destination)
     case forceQuit(pid: Int32)
     case snooze(AlertKind, discriminator: String, SnoozeOption)
+    case ignoreThreat(id: String)
   }
 
   @Published private(set) var authorization: UNAuthorizationStatus = .notDetermined
@@ -89,9 +90,13 @@ final class NotificationCoordinator: NSObject, ObservableObject, UNUserNotificat
             identifier: "forceQuit", title: "Force Quit", options: [.destructive]),
           UNNotificationAction(identifier: "wait", title: "Wait"),
         ]),
-      category(
-        .malwareDetected,
-        [UNNotificationAction(identifier: "openProtection", title: "Review in CleanScope")]),
+      UNNotificationCategory(
+        identifier: AlertKind.malwareDetected.rawValue,
+        actions: [
+          UNNotificationAction(identifier: "openProtection", title: "Remove…", options: [.foreground]),
+          UNNotificationAction(identifier: "ignoreThreat", title: "Ignore"),
+        ],
+        intentIdentifiers: []),
     ]
   }
 
@@ -129,6 +134,7 @@ final class NotificationCoordinator: NSObject, ObservableObject, UNUserNotificat
       case "openProtection":
         action = .open(.protection)
       case "forceQuit": action = pid.map { .forceQuit(pid: $0) }
+      case "ignoreThreat": action = .ignoreThreat(id: discriminator)
       case UNNotificationDefaultActionIdentifier:
         action =
           kind == .malwareDetected

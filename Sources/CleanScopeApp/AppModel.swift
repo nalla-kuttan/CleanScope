@@ -105,6 +105,7 @@ final class AppModel: ObservableObject {
   @Published private(set) var protectionReport: MalwareScanReport?
   @Published private(set) var isProtectionScanning = false
   private var protectionScanner: MalwareScanner?
+  private var realTimeMonitor: RealTimeMonitor?
   private let protectionStore = ProtectionStore()
   private let ignoredThreatsKey = "CleanScope.ignoredThreats"
   var lastProtectionScan: Date? { protectionReport?.date }
@@ -141,6 +142,12 @@ final class AppModel: ObservableObject {
     notifications.onAction = { [weak self] action in self?.handle(action) }
     statusMonitor.supplementalInputs = { [weak self] in self?.supplementalAlertInputs() ?? AlertInputs() }
     protectionReport = protectionStore.load()
+    let monitor = RealTimeMonitor(
+      rules: { [weak self] in self?.activeMalwareRules ?? .bundled },
+      trustedTeamIDs: { [weak self] in Set(self?.settings.trustedTeamIDs ?? []) },
+      onThreats: { [weak self] threats in self?.realTimeDetected(threats) })
+    realTimeMonitor = monitor
+    monitor.setEnabled(loadedSettings.realTimeProtectionEnabled)
     statusMonitor.start()
     hungAppMonitor.setEnabled(loadedSettings.hungAppMonitoringEnabled, prompt: false)
     updatePressureTracking()
@@ -206,6 +213,29 @@ final class AppModel: ObservableObject {
     isProtectionScanning = false
   }
 
+  /// Adds real-time detections to the latest report and posts one notification each.
+  private func realTimeDetected(_ threats: [Threat]) {
+    let ignored = ignoredThreatIDs
+    let fresh = threats.filter { !ignored.contains($0.id) }
+    guard !fresh.isEmpty else { return }
+    var report =
+      protectionReport
+      ?? MalwareScanReport(
+        date: Date(), threats: [], scannedFiles: 0, yaraAvailable: false,
+        ruleVersion: activeMalwareRules.version)
+    let known = Set(report.threats.map(\.id))
+    report.threats += fresh.filter { !known.contains($0.id) }
+    protectionReport = report
+    try? protectionStore.save(report)
+    for threat in fresh where !known.contains(threat.id) {
+      notifications.post(
+        AlertPayload(
+          kind: .malwareDetected, discriminator: threat.id,
+          title: "CleanScope found \(threat.name)",
+          body: "\(URL(fileURLWithPath: threat.location).lastPathComponent) matched a \(threat.category.title.lowercased()) rule. Review it in CleanScope."))
+    }
+  }
+
   func cancelProtectionScan() {
     Task { await protectionScanner?.cancel() }
   }
@@ -249,6 +279,9 @@ final class AppModel: ObservableObject {
     if old.memoryAlertEnabled != settings.memoryAlertEnabled {
       updatePressureTracking()
     }
+    if old.realTimeProtectionEnabled != settings.realTimeProtectionEnabled {
+      realTimeMonitor?.setEnabled(settings.realTimeProtectionEnabled)
+    }
     metrics.includesTemperature = settings.experimentalTemperature
     let alertToggles: [KeyPath<CleanScopeCore.Settings, Bool>] = [
       \.lowDiskAlertEnabled, \.trashAlertEnabled, \.externalDriveAlertEnabled,
@@ -291,6 +324,10 @@ final class AppModel: ObservableObject {
       NSRunningApplication(processIdentifier: pid)?.forceTerminate()
     case .snooze(let kind, let discriminator, let option):
       statusMonitor.snooze(kind, discriminator: discriminator, option: option)
+    case .ignoreThreat(let id):
+      if let threat = protectionReport?.threats.first(where: { $0.id == id }) {
+        ignoreThreat(threat)
+      }
     }
   }
 
