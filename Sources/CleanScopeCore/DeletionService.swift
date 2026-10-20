@@ -6,71 +6,95 @@ import Foundation
 
 public actor DeletionService {
   public typealias FileMover = @Sendable (URL) async -> Bool
+  public typealias FileRemover = @Sendable (URL) async -> Bool
   public typealias DiskSnapshotProvider = @Sendable () -> Int64
 
   private let fileMover: FileMover
+  private let fileRemover: FileRemover
+  private let privileged: PrivilegedRunning?
+  private let trashBinaryExists: Bool
   private let diskSnapshot: DiskSnapshotProvider
 
   public init(
     fileMover: @escaping FileMover = { url in
       await DeletionService.defaultTrashMover(url)
     },
+    fileRemover: @escaping FileRemover = { url in
+      await DeletionService.defaultRemover(url)
+    },
+    privileged: PrivilegedRunning? = nil,
+    trashBinaryExists: Bool = FileManager.default.isExecutableFile(atPath: "/usr/bin/trash"),
     diskSnapshot: @escaping DiskSnapshotProvider = { DeletionService.defaultDiskSnapshot() }
   ) {
     self.fileMover = fileMover
+    self.fileRemover = fileRemover
+    self.privileged = privileged
+    self.trashBinaryExists = trashBinaryExists
     self.diskSnapshot = diskSnapshot
   }
 
-  public func cleanup(selected: [ScanResult]) async -> CleanupSession {
+  /// Items are classified with `.trash`; the user's setting decides at cleanup time whether that
+  /// means the Trash or permanent deletion, so saved sessions never change.
+  public static func effectiveMethod(deleteImmediately: Bool) -> DeletionMethod {
+    deleteImmediately ? .permanent : .trash
+  }
+
+  public func cleanup(selected: [ScanResult], method: DeletionMethod = .trash) async
+    -> CleanupSession
+  {
+    let method: DeletionMethod = method == .permanent ? .permanent : .trash
     let before = diskSnapshot()
     var deleted: [CleanupItemResult] = []
     var skipped: [CleanupItemResult] = []
     var blocked: [CleanupItemResult] = []
     var failed: [CleanupItemResult] = []
+    var adminItems: [ScanResult] = []
+
+    func record(_ item: ScanResult, _ status: CleanupStatus, _ message: String) {
+      let result = CleanupItemResult(
+        scanResultId: item.id, path: item.path, sizeBytes: item.sizeBytes, status: status,
+        message: message)
+      switch status {
+      case .deleted: deleted.append(result)
+      case .skipped: skipped.append(result)
+      case .blocked: blocked.append(result)
+      case .failed: failed.append(result)
+      }
+    }
 
     for item in selected {
       if item.isProtected || item.deletionMethod == .notAllowed {
-        blocked.append(
-          CleanupItemResult(
-            scanResultId: item.id,
-            path: item.path,
-            sizeBytes: item.sizeBytes,
-            status: .blocked,
-            message: "Protected by macOS or unavailable. Item was left in place."
-          ))
+        record(item, .blocked, "Protected by macOS or unavailable. Item was left in place.")
         continue
       }
 
       guard item.canDelete, item.deletionMethod == .trash else {
-        skipped.append(
-          CleanupItemResult(
-            scanResultId: item.id,
-            path: item.path,
-            sizeBytes: item.sizeBytes,
-            status: .skipped,
-            message: "Manual review required before deletion."
-          ))
+        record(item, .skipped, "Manual review required before deletion.")
         continue
       }
 
-      if await fileMover(URL(fileURLWithPath: item.normalizedPath)) {
-        deleted.append(
-          CleanupItemResult(
-            scanResultId: item.id,
-            path: item.path,
-            sizeBytes: item.sizeBytes,
-            status: .deleted,
-            message: "Moved to Trash."
-          ))
+      if item.requiresAdmin {
+        adminItems.append(item)
+        continue
+      }
+
+      let url = URL(fileURLWithPath: item.normalizedPath)
+      if method == .permanent {
+        if await fileRemover(url) {
+          record(item, .deleted, "Deleted permanently.")
+        } else {
+          record(item, .failed, "Could not delete item.")
+        }
+      } else if await fileMover(url) {
+        record(item, .deleted, "Moved to Trash.")
       } else {
-        failed.append(
-          CleanupItemResult(
-            scanResultId: item.id,
-            path: item.path,
-            sizeBytes: item.sizeBytes,
-            status: .failed,
-            message: "Could not move item to Trash."
-          ))
+        record(item, .failed, "Could not move item to Trash.")
+      }
+    }
+
+    if !adminItems.isEmpty {
+      for (item, status, message) in await removeWithAdministrator(adminItems, method: method) {
+        record(item, status, message)
       }
     }
 
@@ -86,6 +110,40 @@ public actor DeletionService {
     )
   }
 
+  /// Root-owned items go through one administrator prompt for the whole batch.
+  private func removeWithAdministrator(_ items: [ScanResult], method: DeletionMethod) async
+    -> [(ScanResult, CleanupStatus, String)]
+  {
+    if method == .trash && !trashBinaryExists {
+      return items.map {
+        (
+          $0, .skipped,
+          "Removed permanently (needs administrator). Turn on Delete immediately in Settings to remove it."
+        )
+      }
+    }
+    guard let privileged else {
+      return items.map { ($0, .failed, "Needs an administrator to remove.") }
+    }
+
+    let quoted = items.map { ShellQuote.quote($0.normalizedPath) }.joined(separator: " ")
+    let command = method == .permanent ? "/bin/rm -rf \(quoted)" : "/usr/bin/trash \(quoted)"
+    do {
+      _ = try await privileged.run(command: command)
+    } catch PrivilegedRunnerError.cancelled {
+      return items.map { ($0, .skipped, "Administrator approval was cancelled.") }
+    } catch {
+      return items.map { ($0, .failed, "The administrator command failed.") }
+    }
+
+    let success = method == .permanent ? "Deleted permanently." : "Moved to Trash."
+    return items.map { item in
+      FileManager.default.fileExists(atPath: item.normalizedPath)
+        ? (item, .failed, "The item is still in place.")
+        : (item, .deleted, success)
+    }
+  }
+
   public static func defaultTrashMover(_ url: URL) async -> Bool {
     #if canImport(AppKit)
       do {
@@ -97,6 +155,15 @@ public actor DeletionService {
     #else
       return false
     #endif
+  }
+
+  public static func defaultRemover(_ url: URL) async -> Bool {
+    do {
+      try FileManager.default.removeItem(at: url)
+      return true
+    } catch {
+      return false
+    }
   }
 
   public static func defaultDiskSnapshot() -> Int64 {

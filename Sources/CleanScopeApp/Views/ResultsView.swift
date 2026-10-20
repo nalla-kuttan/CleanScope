@@ -236,6 +236,7 @@ struct ResultCardRow: View {
   var onToggle: (_ usesRangeSelection: Bool) -> Void
   var onDetail: () -> Void
   @State private var isHovered = false
+  @State private var confirmsPermanent = false
 
   var body: some View {
     HStack(spacing: 10) {
@@ -295,8 +296,17 @@ struct ResultCardRow: View {
           .disabled(result.isExcluded)
         if result.canDelete {
           Divider()
-          Button(role: .destructive) { Task { await model.cleanup(result) } }
-            label: { Label("Move to Trash", systemImage: "trash") }
+          Button(role: .destructive) {
+            if model.settings.deleteImmediately {
+              confirmsPermanent = true
+            } else {
+              Task { await model.cleanup(result) }
+            }
+          } label: {
+            Label(
+              model.settings.deleteImmediately ? "Delete Permanently…" : "Move to Trash",
+              systemImage: "trash")
+          }
         }
       } label: {
         Image(systemName: "ellipsis")
@@ -325,6 +335,15 @@ struct ResultCardRow: View {
     .scaleEffect(isHovered ? 1.003 : 1.0)
     .animation(.easeOut(duration: 0.12), value: isHovered)
     .onHover { isHovered = $0 }
+    .alert(
+      "Delete \(result.name) (\(ByteCount.string(result.sizeBytes))) permanently?",
+      isPresented: $confirmsPermanent
+    ) {
+      Button("Cancel", role: .cancel) {}
+      Button("Delete Permanently", role: .destructive) { Task { await model.cleanup(result) } }
+    } message: {
+      Text("This can't be undone.")
+    }
     // Selected left accent bar
     .overlay(alignment: .leading) {
       if model.selection.contains(result.id) {

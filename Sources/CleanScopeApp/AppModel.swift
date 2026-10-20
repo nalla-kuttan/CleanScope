@@ -91,7 +91,7 @@ final class AppModel: ObservableObject {
     settingsStore: SettingsStore = SettingsStore(),
     repository: ScanRepository = ScanRepository(),
     permissionService: PermissionService = PermissionService(),
-    deletionService: DeletionService = DeletionService(),
+    deletionService: DeletionService = DeletionService(privileged: AppleScriptPrivilegedRunner()),
     exclusionStore: ExclusionStore = ExclusionStore()
   ) {
     self.settingsStore = settingsStore
@@ -204,6 +204,9 @@ final class AppModel: ObservableObject {
 
     session = completed
     streamedResults = completed.results
+    if settings.preselectSafeCaches && completed.status == .completed {
+      selection = ResultPresentation.preselection(for: completed.results)
+    }
     permissionSummary = permissionService.summary(skippedPaths: completed.skippedPaths)
     if settings.saveScanHistory {
       try? repository.saveLatest(completed)
@@ -289,16 +292,21 @@ final class AppModel: ObservableObject {
   }
 
   func cleanupSelected() async {
-    cleanupSession = await deletionService.cleanup(selected: selectedResults())
+    cleanupSession = await deletionService.cleanup(
+      selected: selectedResults(), method: cleanupMethod)
     selection = []
     destination = .cleanupHistory
   }
 
   func cleanup(_ result: ScanResult) async {
     guard result.canDelete else { return }
-    cleanupSession = await deletionService.cleanup(selected: [result])
+    cleanupSession = await deletionService.cleanup(selected: [result], method: cleanupMethod)
     selection.remove(result.id)
     destination = .cleanupHistory
+  }
+
+  var cleanupMethod: DeletionMethod {
+    DeletionService.effectiveMethod(deleteImmediately: settings.deleteImmediately)
   }
 
   func exclude(_ result: ScanResult) {

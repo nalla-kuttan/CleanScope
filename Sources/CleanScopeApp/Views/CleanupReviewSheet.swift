@@ -4,7 +4,11 @@ import SwiftUI
 struct CleanupReviewSheet: View {
   var items: [ScanResult]
   var onConfirm: () -> Void
+  @EnvironmentObject private var model: AppModel
   @Environment(\.dismiss) private var dismiss
+  @State private var confirmsPermanent = false
+
+  private var isPermanent: Bool { model.settings.deleteImmediately }
 
   private var summary: SelectionSummary {
     SelectionSummary(items: items)
@@ -19,7 +23,7 @@ struct CleanupReviewSheet: View {
         VStack(alignment: .leading, spacing: 2) {
           Text("Review cleanup")
             .font(.title2.bold())
-          Text("Nothing is permanently deleted.")
+          Text(isPermanent ? "Items are deleted immediately." : "Nothing is permanently deleted.")
             .foregroundStyle(.secondary)
         }
       }
@@ -60,7 +64,9 @@ struct CleanupReviewSheet: View {
       .clipShape(RoundedRectangle(cornerRadius: BrandTheme.radius))
 
       Label(
-        "CleanScope will move allowed items to the macOS Trash. Protected or manual-review items remain in place.",
+        isPermanent
+          ? "CleanScope will delete allowed items permanently. Protected or manual-review items remain in place."
+          : "CleanScope will move allowed items to the macOS Trash. Protected or manual-review items remain in place.",
         systemImage: "shield.checkered"
       )
       .font(.subheadline)
@@ -73,15 +79,33 @@ struct CleanupReviewSheet: View {
         }
         Spacer()
         Button(role: .destructive) {
-          dismiss()
-          onConfirm()
+          if isPermanent {
+            confirmsPermanent = true
+          } else {
+            dismiss()
+            onConfirm()
+          }
         } label: {
-          Label("Move Selected Items to Trash", systemImage: "trash")
+          Label(
+            isPermanent ? "Delete Permanently" : "Move Selected Items to Trash",
+            systemImage: isPermanent ? "xmark.bin" : "trash")
         }
         .keyboardShortcut(.defaultAction)
       }
     }
     .padding(24)
     .frame(width: 540)
+    .alert(
+      "Delete \(summary.itemCount) item\(summary.itemCount == 1 ? "" : "s") (\(ByteCount.string(summary.totalBytes))) permanently?",
+      isPresented: $confirmsPermanent
+    ) {
+      Button("Cancel", role: .cancel) {}
+      Button("Delete Permanently", role: .destructive) {
+        dismiss()
+        onConfirm()
+      }
+    } message: {
+      Text("This can't be undone.")
+    }
   }
 }

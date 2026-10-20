@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 
 @testable import CleanScopeCore
@@ -56,5 +57,123 @@ import Testing
 
     #expect(session.deletedItems.isEmpty)
     #expect(session.blockedItems.count == 1)
+  }
+
+  @Test func permanentUsesRemoverNotMover() async {
+    let item = ScanResult.fixture(
+      path: "/Users/me/Library/Caches/App", sizeBytes: 100, category: .safeToDelete)
+    let service = DeletionService(
+      fileMover: { _ in
+        Issue.record("Mover used for permanent deletion")
+        return false
+      },
+      fileRemover: { _ in true },
+      diskSnapshot: { 1_000 })
+
+    let session = await service.cleanup(selected: [item], method: .permanent)
+
+    #expect(session.deletedItems.count == 1)
+    #expect(session.deletedItems.first?.message == "Deleted permanently.")
+  }
+
+  @Test func permanentStillSkipsManualReviewAndBlocksNotAllowed() async {
+    let manual = ScanResult.fixture(
+      path: "/Users/me/Documents", sizeBytes: 100, category: .doNotBulkDelete)
+    var notAllowed = ScanResult.fixture(
+      path: "/Users/me/Library/Caches/X", sizeBytes: 100, category: .safeToDelete)
+    notAllowed.deletionMethod = .notAllowed
+    notAllowed.canDelete = false
+    let service = DeletionService(
+      fileMover: { _ in true },
+      fileRemover: { _ in
+        Issue.record("Remover reached a blocked item")
+        return true
+      },
+      diskSnapshot: { 1_000 })
+
+    let session = await service.cleanup(selected: [manual, notAllowed], method: .permanent)
+
+    #expect(session.skippedItems.map(\.path) == ["/Users/me/Documents"])
+    #expect(session.blockedItems.map(\.path) == ["/Users/me/Library/Caches/X"])
+    #expect(session.deletedItems.isEmpty)
+  }
+
+  @Test func effectiveMethodIsTrashUnlessDeleteImmediately() {
+    #expect(DeletionService.effectiveMethod(deleteImmediately: false) == .trash)
+    #expect(DeletionService.effectiveMethod(deleteImmediately: true) == .permanent)
+  }
+
+  @Test func adminItemsShareOnePrivilegedTrashCall() async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    var items: [ScanResult] = []
+    for name in ["system.log.0.gz", "it's.log.1.gz"] {
+      var item = ScanResult.fixture(
+        path: directory.appendingPathComponent(name).path, sizeBytes: 10, category: .safeToDelete)
+      item.requiresAdmin = true
+      items.append(item)
+    }
+    let privileged = StubPrivilegedRunner()
+    let service = DeletionService(
+      fileMover: { _ in
+        Issue.record("Admin item used the normal mover")
+        return true
+      },
+      privileged: privileged,
+      trashBinaryExists: true,
+      diskSnapshot: { 1_000 })
+
+    let session = await service.cleanup(selected: items, method: .trash)
+
+    #expect(privileged.recorded.count == 1)
+    let command = try #require(privileged.recorded.first)
+    #expect(command.hasPrefix("/usr/bin/trash "))
+    #expect(command.contains(ShellQuote.quote(items[1].normalizedPath)))
+    #expect(session.deletedItems.count == 2)
+  }
+
+  @Test func adminItemsWithoutTrashBinaryNeedPermanentDelete() async {
+    var item = ScanResult.fixture(
+      path: "/private/var/log/system.log.0.gz", sizeBytes: 10, category: .safeToDelete)
+    item.requiresAdmin = true
+    let privileged = StubPrivilegedRunner()
+    let service = DeletionService(
+      fileMover: { _ in true }, privileged: privileged, trashBinaryExists: false,
+      diskSnapshot: { 1_000 })
+
+    let session = await service.cleanup(selected: [item], method: .trash)
+
+    #expect(privileged.recorded.isEmpty)
+    #expect(session.skippedItems.first?.message.contains("Removed permanently (needs administrator)") == true)
+  }
+
+  @Test func adminPermanentDeleteUsesRm() async {
+    var item = ScanResult.fixture(
+      path: "/private/var/log/old.log.2.gz", sizeBytes: 10, category: .safeToDelete)
+    item.requiresAdmin = true
+    let privileged = StubPrivilegedRunner()
+    let service = DeletionService(
+      fileMover: { _ in true }, privileged: privileged, trashBinaryExists: false,
+      diskSnapshot: { 1_000 })
+
+    _ = await service.cleanup(selected: [item], method: .permanent)
+
+    #expect(privileged.recorded == ["/bin/rm -rf '\(item.normalizedPath)'"])
+  }
+
+  @Test func shellQuoteEscapesSingleQuotes() {
+    #expect(ShellQuote.quote("/a/it's") == #"'/a/it'\''s'"#)
+    #expect(ShellQuote.appleScriptLiteral(#"echo "hi" \ x"#) == #""echo \"hi\" \\ x""#)
+  }
+
+  @Test func preselectionPicksOnlyReadyCaches() {
+    var cache = ScanResult.fixture(
+      path: "/Users/me/Library/Caches/App", sizeBytes: 100, category: .safeToDelete)
+    cache.confidence = .high
+    var log = ScanResult.fixture(
+      path: "/Users/me/Library/Logs/App", sizeBytes: 100, category: .safeToDelete)
+    log.confidence = .high
+    let download = ScanResult.fixture(
+      path: "/Users/me/Downloads/old.zip", sizeBytes: 100, category: .probablyUnused)
+    #expect(ResultPresentation.preselection(for: [cache, log, download]) == [cache.id])
   }
 }

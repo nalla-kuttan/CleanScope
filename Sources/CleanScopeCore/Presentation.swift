@@ -54,6 +54,13 @@ public enum ResultPresentation {
   }
 }
 
+extension ResultPresentation {
+  /// Ids to select after a scan when "Preselect Ready to Delete caches" is on.
+  public static func preselection(for results: [ScanResult]) -> Set<String> {
+    Set(results.filter(isReadyToDeleteCache).map(\.id))
+  }
+}
+
 public enum VisibleSelectionState: Equatable, Sendable {
   case none
   case some

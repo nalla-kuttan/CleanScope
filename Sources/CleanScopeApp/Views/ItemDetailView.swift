@@ -6,6 +6,7 @@ struct ItemDetailView: View {
   var result: ScanResult
   @EnvironmentObject private var model: AppModel
   @Environment(\.dismiss) private var dismiss
+  @State private var confirmsPermanent = false
 
   private var iconName: String {
     if result.itemType == .folder { return "folder.fill" }
@@ -106,8 +107,15 @@ struct ItemDetailView: View {
         Spacer()
 
         if result.canDelete {
-          capsuleButton("Move to Trash", icon: "trash", role: .destructive) {
-            dismiss(); Task { await model.cleanup(result) }
+          capsuleButton(
+            model.settings.deleteImmediately ? "Delete Permanently…" : "Move to Trash",
+            icon: "trash", role: .destructive
+          ) {
+            if model.settings.deleteImmediately {
+              confirmsPermanent = true
+            } else {
+              dismiss(); Task { await model.cleanup(result) }
+            }
           }
         }
 
@@ -120,6 +128,17 @@ struct ItemDetailView: View {
     .padding(24)
     .frame(width: 620, height: 600)
     .background(.ultraThinMaterial)
+    .alert(
+      "Delete \(result.name) (\(ByteCount.string(result.sizeBytes))) permanently?",
+      isPresented: $confirmsPermanent
+    ) {
+      Button("Cancel", role: .cancel) {}
+      Button("Delete Permanently", role: .destructive) {
+        dismiss(); Task { await model.cleanup(result) }
+      }
+    } message: {
+      Text("This can't be undone.")
+    }
   }
 
   // MARK: - Warning Banner

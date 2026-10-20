@@ -98,9 +98,21 @@ struct SettingsView: View {
             .foregroundStyle(.secondary)
         }
 
-        Section {
-          Label("CleanScope moves allowed files to Trash by default.", systemImage: "trash")
-            .foregroundStyle(.secondary)
+        Section("Cleanup") {
+          Picker("When cleaning up", selection: $model.settings.deleteImmediately) {
+            Text("Move to Trash").tag(false)
+            Text("Delete immediately").tag(true)
+          }
+          Toggle(
+            "Preselect Ready to Delete caches after a scan",
+            isOn: $model.settings.preselectSafeCaches)
+          Label(
+            model.settings.deleteImmediately
+              ? "Cleanup deletes items permanently after a second confirmation."
+              : "CleanScope moves allowed files to Trash by default.",
+            systemImage: model.settings.deleteImmediately ? "xmark.bin" : "trash"
+          )
+          .foregroundStyle(.secondary)
         }
       }
       .formStyle(.grouped)

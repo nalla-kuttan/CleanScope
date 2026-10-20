@@ -59,7 +59,7 @@ struct CleanupReportView: View {
 
           VStack(spacing: 10) {
             reportSection(
-              "Moved to Trash", symbol: "trash.fill", tint: BrandTheme.freshLeaf,
+              "Removed", symbol: "trash.fill", tint: BrandTheme.freshLeaf,
               items: cleanup.deletedItems)
             reportSection(
               "Skipped", symbol: "forward.fill", tint: BrandTheme.sunToken,
