@@ -7,12 +7,32 @@ public struct SelectionSummary: Equatable, Sendable {
 
   public init(items: [ScanResult]) {
     itemCount = items.count
-    totalBytes = items.reduce(0) { $0 + $1.sizeBytes }
+    totalBytes = ResultPresentation.totalBytes(items)
     categoryCounts = Dictionary(grouping: items, by: \.category).mapValues(\.count)
   }
 }
 
+public enum CountPhrase {
+  /// "1 item", "2,709 items". English-only inflection, matching the rest of the app's copy.
+  public static func make(_ count: Int, _ singular: String, plural: String? = nil) -> String {
+    let number = count.formatted(.number)
+    return "\(number) \(count == 1 ? singular : (plural ?? singular + "s"))"
+  }
+}
+
 public enum StoragePresentation {
+  public static func headline(hasScanned: Bool, isScanning: Bool, safeBytes: Int64) -> String {
+    if isScanning { return "Looking for room to grow…" }
+    guard hasScanned else { return "Let’s see where your space went." }
+    guard safeBytes > 0 else { return "Your Mac is already breathing easy." }
+    return "You found \(ByteCount.string(safeBytes)) of breathing room."
+  }
+
+  public static func reviewLine(count: Int) -> String? {
+    guard count > 0 else { return nil }
+    return "\(CountPhrase.make(count, "item")) \(count == 1 ? "deserves" : "deserve") a closer look."
+  }
+
   public static func reclaimCopy(bytes: Int64) -> String {
     switch bytes {
     case ..<1:
@@ -33,6 +53,26 @@ public enum StoragePresentation {
 }
 
 public enum ResultPresentation {
+  /// Drops results that sit inside another result's folder, keeping the original order.
+  /// Scans report nested folders separately, so summing every result double-counts bytes.
+  public static func outermost(_ results: [ScanResult]) -> [ScanResult] {
+    let paths = Set(results.map(\.normalizedPath))
+    return results.filter { !hasAncestor($0.normalizedPath, in: paths) }
+  }
+
+  public static func totalBytes(_ results: [ScanResult]) -> Int64 {
+    outermost(results).reduce(0) { $0 + $1.sizeBytes }
+  }
+
+  static func hasAncestor(_ path: String, in paths: Set<String>) -> Bool {
+    var parent = (path as NSString).deletingLastPathComponent
+    while !parent.isEmpty, parent != "/" {
+      if paths.contains(parent) { return true }
+      parent = (parent as NSString).deletingLastPathComponent
+    }
+    return false
+  }
+
   public static func isReadyToDeleteCache(_ result: ScanResult) -> Bool {
     guard
       result.category == .safeToDelete,
@@ -113,11 +153,20 @@ public enum ResultSelection {
   ) -> CleanupPlan {
     let currentByID = Dictionary(current.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
     var seen = Set<String>()
-    let items = reviewed.compactMap { item -> ScanResult? in
+    let reviewedEligible = reviewed.compactMap { item -> ScanResult? in
       guard seen.insert(item.id).inserted, let latest = currentByID[item.id] else { return nil }
       return eligible([latest]).first
     }
-    return CleanupPlan(items: items, remainingSelection: selection.subtracting(items.map(\.id)))
+    // Trashing a folder takes its contents with it, so only the outermost items move and
+    // anything inside them leaves the selection too.
+    let items = ResultPresentation.outermost(reviewedEligible)
+    let trashedPaths = Set(items.map(\.normalizedPath))
+    let gone = current.filter {
+      trashedPaths.contains($0.normalizedPath)
+        || ResultPresentation.hasAncestor($0.normalizedPath, in: trashedPaths)
+    }
+    let removed = Set(reviewedEligible.map(\.id)).union(gone.map(\.id))
+    return CleanupPlan(items: items, remainingSelection: selection.subtracting(removed))
   }
 }
 

@@ -174,4 +174,65 @@ private actor TrashedPaths {
   func append(_ path: String) {
     paths.append(path)
   }
+
+  @Test func countPhraseInflectsSingularAndPlural() {
+    #expect(CountPhrase.make(0, "item") == "0 items")
+    #expect(CountPhrase.make(1, "item") == "1 item")
+    #expect(CountPhrase.make(2_709, "item") == "2,709 items")
+    #expect(CountPhrase.make(3, "category", plural: "categories") == "3 categories")
+  }
+
+  @Test func headlineFollowsScanState() {
+    #expect(
+      StoragePresentation.headline(hasScanned: false, isScanning: false, safeBytes: 0)
+        == "Let’s see where your space went.")
+    #expect(
+      StoragePresentation.headline(hasScanned: false, isScanning: true, safeBytes: 0)
+        == "Looking for room to grow…")
+    #expect(
+      StoragePresentation.headline(hasScanned: true, isScanning: false, safeBytes: 0)
+        == "Your Mac is already breathing easy.")
+    #expect(
+      StoragePresentation.headline(hasScanned: true, isScanning: false, safeBytes: 6_210_000_000)
+        .hasPrefix("You found "))
+  }
+
+  @Test func reviewLineCountsItemsNeedingAttention() {
+    #expect(StoragePresentation.reviewLine(count: 0) == nil)
+    #expect(StoragePresentation.reviewLine(count: 1) == "1 item deserves a closer look.")
+    #expect(StoragePresentation.reviewLine(count: 3) == "3 items deserve a closer look.")
+  }
+
+  @Test func outermostDropsResultsNestedInsideOtherResults() {
+    let parent = ScanResult.fixture(path: "/u/Library/Caches/Brave", sizeBytes: 100, category: .safeToDelete)
+    let child = ScanResult.fixture(path: "/u/Library/Caches/Brave/Default", sizeBytes: 90, category: .safeToDelete)
+    let sibling = ScanResult.fixture(path: "/u/Library/Caches/BraveOther", sizeBytes: 5, category: .safeToDelete)
+
+    let kept = ResultPresentation.outermost([child, parent, sibling])
+
+    #expect(kept.map(\ScanResult.path) == [parent.path, sibling.path])
+    #expect(ResultPresentation.totalBytes([child, parent, sibling]) == 105)
+  }
+
+  @Test func summariesDoNotDoubleCountNestedFolders() {
+    let parent = ScanResult.fixture(path: "/u/Library/Caches/Brave", sizeBytes: 100, category: .safeToDelete)
+    let child = ScanResult.fixture(path: "/u/Library/Caches/Brave/Default", sizeBytes: 90, category: .safeToDelete)
+
+    #expect(ScanSummary(results: [parent, child]).safeToDeleteBytes == 100)
+    #expect(SelectionSummary(items: [parent, child]).totalBytes == 100)
+    #expect(SelectionSummary(items: [parent, child]).itemCount == 2)
+  }
+
+  @Test func cleanupPlanTrashesOnlyOutermostAndDeselectsDescendants() {
+    let parent = ScanResult.fixture(path: "/u/Library/Caches/Brave", sizeBytes: 100, category: .safeToDelete)
+    let child = ScanResult.fixture(path: "/u/Library/Caches/Brave/Default", sizeBytes: 90, category: .safeToDelete)
+    let other = ScanResult.fixture(path: "/u/Library/Caches/Other", sizeBytes: 1, category: .safeToDelete)
+
+    let plan = ResultSelection.cleanupPlan(
+      reviewed: [parent], current: [parent, child, other],
+      selection: [parent.id, child.id, other.id])
+
+    #expect(plan.items == [parent])
+    #expect(plan.remainingSelection == [other.id])
+  }
 }
