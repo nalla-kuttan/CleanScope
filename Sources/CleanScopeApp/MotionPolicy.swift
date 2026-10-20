@@ -14,6 +14,8 @@ final class MotionPolicy: ObservableObject {
   private var appActive = true
   private weak var window: NSWindow?
   private var observers: [(center: NotificationCenter, token: NSObjectProtocol)] = []
+  /// The attached window's occlusion observer, kept apart so re-attaching replaces it.
+  private var occlusionToken: NSObjectProtocol?
 
   /// `--reduce-motion` forces Reduce Motion on, read like `DebugSnapshot`'s flags (debug builds only).
   private static var forcesReduceMotion: Bool {
@@ -51,6 +53,7 @@ final class MotionPolicy: ObservableObject {
 
   deinit {
     for entry in observers { entry.center.removeObserver(entry.token) }
+    if let occlusionToken { NotificationCenter.default.removeObserver(occlusionToken) }
   }
 
   /// `base` while transitions are allowed, otherwise `nil` (no animation).
@@ -58,22 +61,32 @@ final class MotionPolicy: ObservableObject {
     allowsTransitions ? base : nil
   }
 
-  /// Tracks the window's occlusion so ambient motion pauses when it is hidden or covered.
+  /// Tracks the window's occlusion so ambient motion pauses when it is hidden or covered. A new
+  /// window (the main window closed and reopened) replaces the previous one's observer, so a
+  /// stale window can no longer pause motion; neither the policy nor the observer keeps the
+  /// window alive.
   func attach(to window: NSWindow) {
     guard self.window !== window else { return }
+    if let occlusionToken { NotificationCenter.default.removeObserver(occlusionToken) }
     self.window = window
-    observe(.default, NSWindow.didChangeOcclusionStateNotification, object: window) { policy in
-      policy.windowVisible = window.occlusionState.contains(.visible)
+    occlusionToken = NotificationCenter.default.addObserver(
+      forName: NSWindow.didChangeOcclusionStateNotification, object: window, queue: .main
+    ) { [weak self, weak window] _ in
+      MainActor.assumeIsolated {
+        guard let self, let window, self.window === window else { return }
+        self.windowVisible = window.occlusionState.contains(.visible)
+        self.refresh()
+      }
     }
     windowVisible = window.occlusionState.contains(.visible)
     refresh()
   }
 
   private func observe(
-    _ center: NotificationCenter, _ name: Notification.Name, object: AnyObject? = nil,
+    _ center: NotificationCenter, _ name: Notification.Name,
     update: ((MotionPolicy) -> Void)? = nil
   ) {
-    let token = center.addObserver(forName: name, object: object, queue: .main) { [weak self] _ in
+    let token = center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
       MainActor.assumeIsolated {
         guard let self else { return }
         update?(self)

@@ -102,16 +102,26 @@ private struct ExclusionUndoBar: View {
 }
 
 /// Hands the hosting `NSWindow` to `onWindow` once the view is in a window.
+/// Reports the hosting window each time the view joins one, including a reopened window.
 private struct WindowAccessor: NSViewRepresentable {
   var onWindow: (NSWindow) -> Void
 
-  func makeNSView(context: Context) -> NSView {
-    let view = NSView()
-    DispatchQueue.main.async { [weak view] in
-      if let window = view?.window { onWindow(window) }
-    }
+  func makeNSView(context: Context) -> WindowReportingView {
+    let view = WindowReportingView()
+    view.onWindow = onWindow
     return view
   }
 
-  func updateNSView(_ nsView: NSView, context: Context) {}
+  func updateNSView(_ nsView: WindowReportingView, context: Context) {
+    nsView.onWindow = onWindow
+  }
+}
+
+private final class WindowReportingView: NSView {
+  var onWindow: ((NSWindow) -> Void)?
+
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    if let window { onWindow?(window) }
+  }
 }
