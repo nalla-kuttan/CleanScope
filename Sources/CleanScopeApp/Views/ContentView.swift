@@ -73,6 +73,10 @@ struct ContentView: View {
       )
     case .maintenance:
       MaintenanceView()
+    case .loginItems:
+      LoginItemsView()
+    case .backgroundItems:
+      BackgroundItemsView()
     case .cleanupHistory:
       CleanupReportView()
     case .settings:
