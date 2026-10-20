@@ -11,7 +11,7 @@ struct PrivacyView: View {
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 16) {
-        PageHeader(title: "Privacy", subtitle: "Clear records macOS keeps about your activity.")
+        PageHeader(icon: .privacy, title: "Privacy", subtitle: "Clear records macOS keeps about your activity.")
 
         VStack(alignment: .leading, spacing: 8) {
           HStack(alignment: .firstTextBaseline) {

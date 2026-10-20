@@ -13,6 +13,7 @@ struct LoginItemsView: View {
     ScrollView {
       VStack(alignment: .leading, spacing: 16) {
         PageHeader(
+          icon: .login,
           title: "Login Items",
           subtitle: "Manage the apps that open when you log in.")
 
@@ -39,7 +40,7 @@ struct LoginItemsView: View {
           if names.isEmpty {
             EmptyStateView(
               title: "No login items", systemImage: "checkmark.seal",
-              message: "No apps are set to open when you log in this way.")
+              message: "No apps are set to open when you log in this way.", icon: .login)
               .frame(minHeight: 200)
           } else {
             VStack(spacing: 6) {
@@ -115,8 +116,9 @@ struct BackgroundItemsView: View {
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 16) {
-        HStack(alignment: .bottom) {
+        HStack(alignment: .center) {
           PageHeader(
+            icon: .login,
             title: "Background Items",
             subtitle: "Manage the list of processes and applications that run in the background.")
           Spacer()
@@ -135,7 +137,7 @@ struct BackgroundItemsView: View {
         if items.isEmpty && !isLoading {
           EmptyStateView(
             title: "No background items", systemImage: "checkmark.seal",
-            message: "No third-party launch agents or daemons are installed.")
+            message: "No third-party launch agents or daemons are installed.", icon: .login)
             .frame(minHeight: 220)
         }
 
@@ -268,18 +270,24 @@ struct BackgroundItemsView: View {
 
 /// Title and subtitle used at the top of the newer destinations.
 struct PageHeader: View {
+  var icon: ModuleIconKey?
   var title: String
   var subtitle: String
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 3) {
-      Text(title)
-        .font(.system(size: 26, weight: .bold, design: .rounded))
-        .foregroundStyle(BrandTheme.textPrimary)
-      Text(subtitle)
-        .font(.system(.subheadline, design: .rounded))
-        .foregroundStyle(BrandTheme.textSecondary)
-        .fixedSize(horizontal: false, vertical: true)
+    HStack(alignment: .center, spacing: 14) {
+      if let icon {
+        ModuleIcon(key: icon, size: 64)
+      }
+      VStack(alignment: .leading, spacing: 3) {
+        Text(title)
+          .font(.system(size: 26, weight: .bold, design: .rounded))
+          .foregroundStyle(BrandTheme.textPrimary)
+        Text(subtitle)
+          .font(.system(.subheadline, design: .rounded))
+          .foregroundStyle(BrandTheme.textSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
     }
   }
 }

@@ -13,7 +13,8 @@ struct MaintenanceView: View {
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 16) {
-        HStack(alignment: .bottom) {
+        HStack(alignment: .center, spacing: 14) {
+          ModuleIcon(key: .maintenance, size: 64)
           VStack(alignment: .leading, spacing: 3) {
             Text("Maintenance")
               .font(.system(size: 26, weight: .bold, design: .rounded))

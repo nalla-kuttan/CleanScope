@@ -90,6 +90,25 @@ final class AppModel: ObservableObject {
       }
     }
 
+    /// The 3D module icon for this destination; nil for destinations without one.
+    var icon: ModuleIconKey? {
+      switch self {
+      case .dashboard: return .scan
+      case .readyToDelete, .safeCleanup: return .cleanup
+      case .storageMap: return .map
+      case .largeFiles: return .large
+      case .developerFiles: return .dev
+      case .downloads: return .downloads
+      case .leftovers: return .leftovers
+      case .maintenance: return .maintenance
+      case .memory: return .memory
+      case .loginItems, .backgroundItems: return .login
+      case .protection: return .protection
+      case .privacy: return .privacy
+      case .hiddenFolders, .appSupport, .trash, .lastCleanup: return nil
+      }
+    }
+
     var subtitle: String? {
       switch self {
       case .readyToDelete: return "High-confidence cache files that apps can recreate."

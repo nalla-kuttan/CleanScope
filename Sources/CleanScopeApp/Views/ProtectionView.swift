@@ -11,8 +11,9 @@ struct ProtectionView: View {
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 16) {
-        HStack(alignment: .bottom) {
+        HStack(alignment: .center) {
           PageHeader(
+            icon: .protection,
             title: "Protection",
             subtitle: "Checks apps, downloads, background items, browser extensions and profiles against known threats.")
           Spacer()
@@ -43,7 +44,8 @@ struct ProtectionView: View {
         } else if model.protectionReport != nil {
           EmptyStateView(
             title: "No known threats found", systemImage: "checkmark.shield",
-            message: "Nothing matched CleanScope's rules. Keep macOS up to date for Apple's own protection too.")
+            message: "Nothing matched CleanScope's rules. Keep macOS up to date for Apple's own protection too.",
+            icon: .protection)
             .frame(minHeight: 220)
         }
 

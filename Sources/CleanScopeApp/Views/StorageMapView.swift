@@ -31,7 +31,8 @@ struct StorageMapView: View {
           EmptyStateView(
             title: "Nothing to map here",
             systemImage: "square.grid.3x3",
-            message: "This folder has no measurable contents."
+            message: "This folder has no measurable contents.",
+            icon: .map
           )
         } else if showsList {
           tileList(tiles)
@@ -46,6 +47,7 @@ struct StorageMapView: View {
           message: model.isScanning
             ? "The map appears when the scan finishes."
             : "The Storage Map shows the folders from your latest scan, sized by how much space they use.",
+          icon: .map,
           commandLabel: model.isScanning ? nil : "Start Scan"
         ) {
           Task {
@@ -62,7 +64,8 @@ struct StorageMapView: View {
   // MARK: - Header
 
   private var header: some View {
-    HStack(alignment: .bottom) {
+    HStack(alignment: .center, spacing: 14) {
+      ModuleIcon(key: .map, size: 64)
       VStack(alignment: .leading, spacing: 3) {
         Text("Storage Map")
           .font(.system(size: 26, weight: .bold, design: .rounded))

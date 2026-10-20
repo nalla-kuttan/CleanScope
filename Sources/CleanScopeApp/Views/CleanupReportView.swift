@@ -48,6 +48,7 @@ struct CleanupReportView: View {
             systemImage: "clock.arrow.circlepath",
             message:
               "After you review items and move them to Trash, this page shows what moved and what stayed.",
+            icon: .cleanup,
             usesBrandMark: true,
             commandLabel: "Browse Ready to Delete"
           ) {

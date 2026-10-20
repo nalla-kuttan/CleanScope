@@ -17,6 +17,7 @@ struct MemoryView: View {
     ScrollView {
       VStack(alignment: .leading, spacing: 18) {
         PageHeader(
+          icon: .memory,
           title: "Memory",
           subtitle: "macOS manages memory on its own. This view shows how it's being used.")
 

@@ -1,9 +1,12 @@
+import CleanScopeCore
 import SwiftUI
 
 struct EmptyStateView: View {
   var title: String
   var systemImage: String
   var message: String
+  /// When set, replaces the SF Symbol / brand mark with the 3D module icon.
+  var icon: ModuleIconKey?
   var usesBrandMark = false
   var brandGrowthStage = 3
   var commandLabel: String?
@@ -11,7 +14,9 @@ struct EmptyStateView: View {
 
   var body: some View {
     VStack(spacing: 10) {
-      if usesBrandMark {
+      if let icon {
+        ModuleIcon(key: icon, size: 64)
+      } else if usesBrandMark {
         BrandMarkView(size: 64, field: true, isDecorative: true, growthStage: brandGrowthStage)
       } else {
         Image(systemName: systemImage)

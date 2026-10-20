@@ -83,6 +83,9 @@ struct ResultsView: View {
     state: VisibleSelectionState
   ) -> some View {
     HStack(alignment: .center, spacing: 12) {
+      if let icon = destination.icon {
+        ModuleIcon(key: icon, size: 64)
+      }
       SelectionCheckbox(
         state: checkboxState(state),
         isEnabled: !ResultSelection.eligible(rows).isEmpty,
@@ -214,19 +217,22 @@ struct ResultsView: View {
       EmptyStateView(
         title: "Scanning…",
         systemImage: "magnifyingglass",
-        message: "Matching items will appear here as they are found."
+        message: "Matching items will appear here as they are found.",
+        icon: destination.icon
       )
     } else if model.hasScanned {
       EmptyStateView(
         title: destination.emptyTitle,
         systemImage: destination.systemImage,
-        message: destination.emptyMessage
+        message: destination.emptyMessage,
+        icon: destination.icon
       )
     } else {
       EmptyStateView(
         title: "No scan yet",
         systemImage: destination.systemImage,
         message: "Run a scan to see what’s in \(destination.title).",
+        icon: destination.icon,
         commandLabel: "Start Scan"
       ) {
         Task { await model.startScan() }

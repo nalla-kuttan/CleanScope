@@ -38,6 +38,8 @@ struct DashboardView: View {
           PermissionBannerView(summary: permission)
         }
 
+        modulesRow
+
         quickWinsSection(wins)
       }
       .padding(24)
@@ -81,6 +83,33 @@ struct DashboardView: View {
     }
     if let line = StoragePresentation.reviewLine(count: model.reviewCount) { return line }
     return StoragePresentation.reclaimCopy(bytes: model.summary.safeToDeleteBytes)
+  }
+
+  /// Plain links to every module that has an icon; wraps on narrow windows.
+  private var modulesRow: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Text("Modules")
+        .font(.title3.weight(.semibold))
+        .foregroundStyle(BrandTheme.textPrimary)
+        .accessibilityAddTraits(.isHeader)
+      LazyVGrid(
+        columns: [GridItem(.adaptive(minimum: 170), spacing: 12, alignment: .leading)],
+        alignment: .leading, spacing: 8
+      ) {
+        ForEach(Self.moduleDestinations) { destination in
+          ModuleLink(destination: destination, count: count(for: destination)) {
+            model.destination = destination
+          }
+        }
+      }
+    }
+  }
+
+  private static let moduleDestinations: [AppModel.Destination] =
+    AppModel.Destination.allCases.filter { $0.icon != nil && $0 != .dashboard }
+
+  private func count(for destination: AppModel.Destination) -> Int? {
+    destination.isResultList ? (model.counts[destination] ?? 0) : nil
   }
 
   @ViewBuilder
@@ -136,19 +165,22 @@ struct DashboardView: View {
       EmptyStateView(
         title: "Looking for quick wins",
         systemImage: "magnifyingglass",
-        message: "Safe, high-confidence caches will appear here as they are found."
+        message: "Safe, high-confidence caches will appear here as they are found.",
+        icon: .cleanup
       )
     } else if model.hasScanned {
       EmptyStateView(
         title: "No quick wins this time",
         systemImage: "leaf",
-        message: "No high-confidence caches turned up. Browse Large Files or Downloads to review items yourself."
+        message: "No high-confidence caches turned up. Browse Large Files or Downloads to review items yourself.",
+        icon: .cleanup
       )
     } else {
       EmptyStateView(
         title: "No scan yet",
         systemImage: "magnifyingglass",
         message: "Run a scan to find caches and generated files your apps can rebuild.",
+        icon: .scan,
         commandLabel: "Start Scan"
       ) {
         Task { await model.startScan() }
@@ -160,6 +192,38 @@ struct DashboardView: View {
 struct ReviewRequest: Identifiable {
   let id = UUID()
   var items: [ScanResult]
+}
+
+private struct ModuleLink: View {
+  var destination: AppModel.Destination
+  var count: Int?
+  var action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      HStack(spacing: 10) {
+        if let icon = destination.icon {
+          ModuleIcon(key: icon, size: 40)
+        }
+        VStack(alignment: .leading, spacing: 0) {
+          Text(destination.title)
+            .foregroundStyle(BrandTheme.textPrimary)
+            .lineLimit(1)
+          if let count {
+            Text("\(count)")
+              .font(.caption)
+              .monospacedDigit()
+              .foregroundStyle(BrandTheme.textSecondary)
+          }
+        }
+        Spacer(minLength: 0)
+      }
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel(
+      count.map { "\(destination.title), \(CountPhrase.make($0, "item"))" } ?? destination.title)
+  }
 }
 
 private struct QuickWinRow: View {
