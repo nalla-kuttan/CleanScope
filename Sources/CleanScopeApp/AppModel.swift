@@ -1,5 +1,7 @@
+import AppKit
 import CleanScopeCore
 import Foundation
+import ServiceManagement
 import SwiftUI
 
 @MainActor
@@ -56,7 +58,10 @@ final class AppModel: ObservableObject {
 
   @Published var destination: Destination? = .dashboard
   @Published var settings: CleanScopeCore.Settings {
-    didSet { try? settingsStore.save(settings) }
+    didSet {
+      try? settingsStore.save(settings)
+      settingsDidChange(from: oldValue)
+    }
   }
   @Published var session: ScanSession?
   @Published var streamedResults: [ScanResult] = []
@@ -68,6 +73,7 @@ final class AppModel: ObservableObject {
     message: "Scan not started.",
     setupSteps: []
   )
+  @Published var openAtLoginError: String?
   @Published var purgeableBytes: Int64 = 0
   @Published var localSnapshots: [Date] = []
 
@@ -78,6 +84,8 @@ final class AppModel: ObservableObject {
   private let exclusionStore: ExclusionStore
   private var scanner: ScannerService?
   private let systemSpace = SystemSpaceService()
+  let notifications: NotificationCoordinator
+  let statusMonitor: StatusMonitor
 
   init(
     settingsStore: SettingsStore = SettingsStore(),
@@ -91,12 +99,82 @@ final class AppModel: ObservableObject {
     self.permissionService = permissionService
     self.deletionService = deletionService
     self.exclusionStore = exclusionStore
-    settings = (try? settingsStore.load()) ?? .default
+    let loadedSettings = (try? settingsStore.load()) ?? .default
+    settings = loadedSettings
+    let notifications = NotificationCoordinator()
+    self.notifications = notifications
+    var settingsProvider: () -> CleanScopeCore.Settings = { loadedSettings }
+    statusMonitor = StatusMonitor(
+      notifications: notifications, settings: { settingsProvider() })
     session = try? repository.loadLatest()
     streamedResults = session?.results ?? []
     if let session {
       permissionSummary = permissionService.summary(skippedPaths: session.skippedPaths)
     }
+    settingsProvider = { [weak self] in self?.settings ?? loadedSettings }
+    notifications.onAction = { [weak self] action in self?.handle(action) }
+    statusMonitor.start()
+  }
+
+  // MARK: - Settings side effects
+
+  private func settingsDidChange(from old: CleanScopeCore.Settings) {
+    if old.showMenuBarExtra != settings.showMenuBarExtra {
+      statusMonitor.reschedule()
+    }
+    if old.openAtLogin != settings.openAtLogin {
+      updateOpenAtLogin(settings.openAtLogin)
+    }
+    let alertToggles: [KeyPath<CleanScopeCore.Settings, Bool>] = [
+      \.lowDiskAlertEnabled, \.trashAlertEnabled, \.externalDriveAlertEnabled,
+      \.memoryAlertEnabled, \.restartReminderEnabled, \.bluetoothBatteryAlertEnabled,
+      \.hungAppMonitoringEnabled, \.realTimeProtectionEnabled, \.externalDriveMountedNotice,
+    ]
+    if alertToggles.contains(where: { !old[keyPath: $0] && settings[keyPath: $0] }) {
+      Task { await notifications.requestAuthorizationIfNeeded() }
+    }
+  }
+
+  private func updateOpenAtLogin(_ enabled: Bool) {
+    do {
+      if enabled {
+        try SMAppService.mainApp.register()
+      } else {
+        try SMAppService.mainApp.unregister()
+      }
+      openAtLoginError = nil
+    } catch {
+      openAtLoginError = "macOS did not allow this change: \(error.localizedDescription)"
+    }
+  }
+
+  // MARK: - Notification actions
+
+  func handle(_ action: NotificationCoordinator.Action) {
+    NSApp.activate(ignoringOtherApps: true)
+    switch action {
+    case .scan:
+      destination = .dashboard
+      Task { await startScan(mode: settings.scanDeveloperFolders ? .developer : .limited) }
+    case .openTrash:
+      NSWorkspace.shared.open(TrashService.userTrash)
+    case .scanDrive(let volumePath):
+      destination = .safeCleanup
+      Task { await startScan(paths: [volumePath], mode: .full) }
+    case .open(let target):
+      destination = target
+    case .forceQuit(let pid):
+      NSRunningApplication(processIdentifier: pid)?.forceTerminate()
+    case .snooze(let kind, let discriminator, let option):
+      statusMonitor.snooze(kind, discriminator: discriminator, option: option)
+    }
+  }
+
+  /// Asks Finder to empty the Trash. Callers confirm with the user first.
+  func emptyTrash() {
+    var error: NSDictionary?
+    NSAppleScript(source: TrashService.emptyTrashScript)?.executeAndReturnError(&error)
+    statusMonitor.refresh()
   }
 
   func startScan(mode: ScanMode) async {

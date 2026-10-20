@@ -36,6 +36,12 @@ struct CleanupReportView: View {
             reduceMotion: reduceMotion
           )
 
+          if let reminder = CleanupSummaryCopy.trashReminder(for: cleanup) {
+            Label(reminder, systemImage: "trash")
+              .font(.subheadline)
+              .foregroundStyle(.secondary)
+          }
+
           HStack(spacing: 12) {
             StorageMetricView(
               label: "Available before",

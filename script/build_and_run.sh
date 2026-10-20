@@ -47,6 +47,10 @@ cat >"$INFO_PLIST" <<PLIST
   <string>$MIN_SYSTEM_VERSION</string>
   <key>NSPrincipalClass</key>
   <string>NSApplication</string>
+  <key>NSAppleEventsUsageDescription</key>
+  <string>CleanScope asks Finder to empty the Trash and System Events to manage login items, only when you choose those actions.</string>
+  <key>NSLocationWhenInUseUsageDescription</key>
+  <string>CleanScope shows the name of your Wi-Fi network in the menu bar monitor. It never stores or shares your location.</string>
 </dict>
 </plist>
 PLIST
