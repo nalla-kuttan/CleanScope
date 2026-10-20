@@ -31,6 +31,7 @@ final class AppModel: ObservableObject {
     case loginItems = "Login Items"
     case backgroundItems = "Background Items"
     case memory = "Memory"
+    case protection = "Protection"
     case cleanupHistory = "Cleanup History"
     case settings = "Settings"
 
@@ -39,6 +40,7 @@ final class AppModel: ObservableObject {
     var section: Section {
       switch self {
       case .cleanupHistory, .settings: return .history
+      case .protection: return .protection
       case .maintenance, .loginItems, .backgroundItems, .memory: return .performance
       default: return .storage
       }
@@ -61,6 +63,7 @@ final class AppModel: ObservableObject {
       case .loginItems: return "person.badge.key"
       case .backgroundItems: return "gearshape.2"
       case .memory: return "memorychip"
+      case .protection: return "shield.lefthalf.filled"
       case .cleanupHistory: return "clock.arrow.circlepath"
       case .settings: return "gearshape"
       }
@@ -99,9 +102,13 @@ final class AppModel: ObservableObject {
   let statusMonitor: StatusMonitor
   let hungAppMonitor: HungAppMonitor
   let metrics = MetricsSampler()
-  /// Set by the protection scanner; read by the Mac status summary.
-  @Published var lastProtectionScan: Date?
-  @Published var threatsFound: Int?
+  @Published private(set) var protectionReport: MalwareScanReport?
+  @Published private(set) var isProtectionScanning = false
+  private var protectionScanner: MalwareScanner?
+  private let protectionStore = ProtectionStore()
+  private let ignoredThreatsKey = "CleanScope.ignoredThreats"
+  var lastProtectionScan: Date? { protectionReport?.date }
+  var threatsFound: Int? { protectionReport?.threats.count }
   private var pressureSince: Date?
   private var pressureTimer: Timer?
 
@@ -133,6 +140,7 @@ final class AppModel: ObservableObject {
     settingsProvider = { [weak self] in self?.settings ?? loadedSettings }
     notifications.onAction = { [weak self] action in self?.handle(action) }
     statusMonitor.supplementalInputs = { [weak self] in self?.supplementalAlertInputs() ?? AlertInputs() }
+    protectionReport = protectionStore.load()
     statusMonitor.start()
     hungAppMonitor.setEnabled(loadedSettings.hungAppMonitoringEnabled, prompt: false)
     updatePressureTracking()
@@ -167,6 +175,51 @@ final class AppModel: ObservableObject {
         }
       }
     }
+  }
+
+  // MARK: - Protection
+
+  /// The malware rules in effect: a verified downloaded set when present, else the bundled one.
+  var activeMalwareRules: MalwareRuleSet { MalwareRuleSet.bundled }
+
+  var ruleStatusLine: String { "Version \(activeMalwareRules.version)" }
+
+  private var ignoredThreatIDs: Set<String> {
+    get { Set(UserDefaults.standard.stringArray(forKey: ignoredThreatsKey) ?? []) }
+    set { UserDefaults.standard.set(Array(newValue), forKey: ignoredThreatsKey) }
+  }
+
+  func runProtectionScan(targets: [MalwareTarget] = MalwareTarget.standard) async {
+    guard !isProtectionScanning else { return }
+    isProtectionScanning = true
+    let rules = activeMalwareRules
+    let scanner = MalwareScanner(
+      rules: rules, yara: ExternalYara(ruleSet: rules),
+      trustedTeamIDs: Set(settings.trustedTeamIDs))
+    protectionScanner = scanner
+    var report = await scanner.scan(targets: targets)
+    let ignored = ignoredThreatIDs
+    report.threats.removeAll { ignored.contains($0.id) }
+    protectionReport = report
+    try? protectionStore.save(report)
+    protectionScanner = nil
+    isProtectionScanning = false
+  }
+
+  func cancelProtectionScan() {
+    Task { await protectionScanner?.cancel() }
+  }
+
+  func ignoreThreat(_ threat: Threat) {
+    ignoredThreatIDs.insert(threat.id)
+    forgetThreat(threat)
+  }
+
+  func forgetThreat(_ threat: Threat) {
+    guard var report = protectionReport else { return }
+    report.threats.removeAll { $0.id == threat.id }
+    protectionReport = report
+    try? protectionStore.save(report)
   }
 
   var statusSummary: StatusSummary {

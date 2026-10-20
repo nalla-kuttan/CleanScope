@@ -125,14 +125,14 @@ final class NotificationCoordinator: NSObject, ObservableObject, UNUserNotificat
       case "scan": action = .scan
       case "openTrash": action = .openTrash
       case "scanDrive": action = volumePath.map { .scanDrive(volumePath: $0) }
-      case "openMemory": action = .open(AppModel.Destination(rawValue: "Memory") ?? .dashboard)
+      case "openMemory": action = .open(.memory)
       case "openProtection":
-        action = .open(AppModel.Destination(rawValue: "Protection") ?? .dashboard)
+        action = .open(.protection)
       case "forceQuit": action = pid.map { .forceQuit(pid: $0) }
       case UNNotificationDefaultActionIdentifier:
         action =
           kind == .malwareDetected
-          ? .open(AppModel.Destination(rawValue: "Protection") ?? .dashboard) : .open(.dashboard)
+          ? .open(.protection) : .open(.dashboard)
       default: action = nil
       }
     }

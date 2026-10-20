@@ -60,7 +60,7 @@ struct MacStatusCard: View {
     switch target {
     case .storage: return .storageMap
     case .trash: return .trash
-    case .protection: return AppModel.Destination(rawValue: "Protection")
+    case .protection: return .protection
     case .battery: return nil
     case .memory: return .memory
     }
