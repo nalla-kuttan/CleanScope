@@ -39,6 +39,10 @@ cat >"$INFO_PLIST" <<PLIST
   <string>$BUNDLE_ID</string>
   <key>CFBundleName</key>
   <string>CleanScope</string>
+  <key>CFBundleShortVersionString</key>
+  <string>1.0.0</string>
+  <key>CFBundleVersion</key>
+  <string>1</string>
   <key>CFBundleIconFile</key>
   <string>CleanScope</string>
   <key>CFBundlePackageType</key>

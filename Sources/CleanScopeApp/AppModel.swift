@@ -102,6 +102,11 @@ final class AppModel: ObservableObject {
   let statusMonitor: StatusMonitor
   let hungAppMonitor: HungAppMonitor
   let metrics = MetricsSampler()
+  @Published private(set) var activeRules: ActiveRules
+  @Published var ruleUpdateMessage: String?
+  private let ruleRepository = RuleRepository()
+  private let ruleUpdater = RuleUpdater()
+  private var ruleTimer: Timer?
   @Published private(set) var protectionReport: MalwareScanReport?
   @Published private(set) var isProtectionScanning = false
   private var protectionScanner: MalwareScanner?
@@ -127,6 +132,7 @@ final class AppModel: ObservableObject {
     self.exclusionStore = exclusionStore
     let loadedSettings = (try? settingsStore.load()) ?? .default
     settings = loadedSettings
+    activeRules = RuleRepository().loadActive()
     let notifications = NotificationCoordinator()
     self.notifications = notifications
     var settingsProvider: () -> CleanScopeCore.Settings = { loadedSettings }
@@ -151,6 +157,10 @@ final class AppModel: ObservableObject {
     statusMonitor.start()
     hungAppMonitor.setEnabled(loadedSettings.hungAppMonitoringEnabled, prompt: false)
     updatePressureTracking()
+    Task { await checkForRuleUpdates() }
+    ruleTimer = Timer.scheduledTimer(withTimeInterval: 3_600, repeats: true) { [weak self] _ in
+      Task { @MainActor in await self?.checkForRuleUpdates() }
+    }
   }
 
   /// Memory pressure, uptime and Bluetooth batteries for the alert evaluator.
@@ -187,9 +197,29 @@ final class AppModel: ObservableObject {
   // MARK: - Protection
 
   /// The malware rules in effect: a verified downloaded set when present, else the bundled one.
-  var activeMalwareRules: MalwareRuleSet { MalwareRuleSet.bundled }
+  var activeMalwareRules: MalwareRuleSet { activeRules.malware }
 
-  var ruleStatusLine: String { "Version \(activeMalwareRules.version)" }
+  var ruleStatusLine: String {
+    activeRules.version == 0 ? "Built in" : "Version \(activeRules.version)"
+  }
+
+  /// Checks for signed rule updates at most once a day while the app is open.
+  func checkForRuleUpdates(force: Bool = false) async {
+    let outcome = await ruleUpdater.checkForUpdates(force: force)
+    switch outcome {
+    case .updated:
+      activeRules = ruleRepository.loadActive()
+      ruleUpdateMessage = "Rules updated to version \(activeRules.version)."
+    case .disabled:
+      ruleUpdateMessage = force ? "Rule updates aren't set up in this build." : nil
+    case .noUpdate:
+      ruleUpdateMessage = force ? "Rules are up to date." : nil
+    case .skippedRecently:
+      ruleUpdateMessage = nil
+    case .rejected(let reason), .failed(let reason):
+      ruleUpdateMessage = force ? reason : nil
+    }
+  }
 
   private var ignoredThreatIDs: Set<String> {
     get { Set(UserDefaults.standard.stringArray(forKey: ignoredThreatsKey) ?? []) }
@@ -362,7 +392,7 @@ final class AppModel: ObservableObject {
     selection = []
 
     let activeScanner = ScannerService(
-      classifier: ClassificationService(),
+      classifier: ClassificationService(rules: activeRules.classification),
       largeFileThresholdBytes: settings.largeFileThresholdBytes
     )
     scanner = activeScanner
@@ -376,7 +406,10 @@ final class AppModel: ObservableObject {
 
     if completed.status == .completed {
       let known = Set(completed.results.map(\.normalizedPath))
-      let leftovers = await Task.detached { LeftoverFinder().allLeftovers() }.value
+      let rules = activeRules.classification
+      let leftovers = await Task.detached {
+        LeftoverFinder(classifier: ClassificationService(rules: rules)).allLeftovers()
+      }.value
       completed.results += leftovers.filter { !known.contains($0.normalizedPath) }
       completed.summary = ScanSummary(results: completed.results)
     }

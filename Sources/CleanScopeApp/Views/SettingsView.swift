@@ -104,6 +104,18 @@ struct SettingsView: View {
             .font(.caption)
             .foregroundStyle(.secondary)
           TrustedTeamsEditor(teamIDs: $model.settings.trustedTeamIDs)
+          HStack {
+            Text("Rules: \(model.ruleStatusLine)")
+            if let updated = model.activeRules.updatedAt {
+              Text("· updated \(updated.formatted(date: .abbreviated, time: .omitted))")
+                .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button("Check for Rule Updates") { Task { await model.checkForRuleUpdates(force: true) } }
+          }
+          if let message = model.ruleUpdateMessage {
+            Text(message).font(.caption).foregroundStyle(.secondary)
+          }
         }
 
         Section("System-managed space") {
