@@ -99,7 +99,7 @@ struct ResultsView: View {
           ScrollView {
             LazyVStack(spacing: 6) {
               ForEach(filtered) { result in
-                ResultCardRow(result: result, onToggle: { select(result, usingRange: false) }) {
+                ResultCardRow(result: result, onToggle: { usesRange in select(result, usingRange: usesRange) }) {
                   selectedResult = result
                 }
               }
@@ -215,8 +215,8 @@ struct ResultsTable: View {
     ScrollView {
       LazyVStack(spacing: 6) {
         ForEach(results) { result in
-          ResultCardRow(result: result, onToggle: {
-            if let onSelect { onSelect(result, false) }
+          ResultCardRow(result: result, onToggle: { usesRange in
+            if let onSelect { onSelect(result, usesRange) }
             else { model.toggleSelection(result) }
           }) {
             selectedResult.wrappedValue = result
@@ -233,7 +233,7 @@ struct ResultsTable: View {
 struct ResultCardRow: View {
   @EnvironmentObject private var model: AppModel
   let result: ScanResult
-  var onToggle: () -> Void
+  var onToggle: (_ usesRangeSelection: Bool) -> Void
   var onDetail: () -> Void
   @State private var isHovered = false
 
@@ -244,7 +244,7 @@ struct ResultCardRow: View {
         state: model.selection.contains(result.id) ? .on : .off,
         isEnabled: result.canDelete && !result.isExcluded,
         accessibilityLabel: model.selection.contains(result.id) ? "Deselect \(result.name)" : "Select \(result.name)"
-      ) { _ in onToggle() }
+      ) { usesRange in onToggle(usesRange) }
 
       // Icon badge
       Image(systemName: result.itemType == .folder ? "folder.fill" : "doc.fill")
