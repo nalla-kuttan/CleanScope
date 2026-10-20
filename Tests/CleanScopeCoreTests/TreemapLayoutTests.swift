@@ -59,6 +59,21 @@ import Testing
     #expect(shown.last?.isOtherItems == true)
   }
 
+  @Test func worstAspectRatioIsAtMostThree() {
+    let laid = TreemapLayout.squarify(items: items, in: rect)
+    for item in laid {
+      let long = max(item.rect.width, item.rect.height)
+      let short = min(item.rect.width, item.rect.height)
+      #expect(short > 0 && long / short <= 3)
+    }
+  }
+
+  @Test func zeroSizeItemsAreDropped() {
+    let laid = TreemapLayout.squarify(items: items + [("zero", 0)], in: rect)
+    #expect(laid.count == items.count)
+    #expect(laid.contains { $0.id == "zero" } == false)
+  }
+
   @Test func nodeLookupDescendsFromSyntheticRoot() {
     let leaf = ScanNode(path: "/a/b", name: "b", sizeBytes: 1, itemType: .folder)
     let root = ScanNode(
