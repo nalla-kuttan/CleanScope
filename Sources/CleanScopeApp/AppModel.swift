@@ -27,6 +27,7 @@ final class AppModel: ObservableObject {
     case downloads = "Downloads"
     case trash = "Trash"
     case leftovers = "Leftovers"
+    case maintenance = "Maintenance"
     case cleanupHistory = "Cleanup History"
     case settings = "Settings"
 
@@ -35,6 +36,7 @@ final class AppModel: ObservableObject {
     var section: Section {
       switch self {
       case .cleanupHistory, .settings: return .history
+      case .maintenance: return .performance
       default: return .storage
       }
     }
@@ -52,6 +54,7 @@ final class AppModel: ObservableObject {
       case .downloads: return "arrow.down.circle"
       case .trash: return "trash"
       case .leftovers: return "shippingbox.and.arrow.backward"
+      case .maintenance: return "wrench.and.screwdriver"
       case .cleanupHistory: return "clock.arrow.circlepath"
       case .settings: return "gearshape"
       }

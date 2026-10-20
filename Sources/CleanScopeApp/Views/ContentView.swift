@@ -71,6 +71,8 @@ struct ContentView: View {
         emptyMessage:
           "When an app is in the Trash and no other copy is installed, its leftover files appear here after a scan."
       )
+    case .maintenance:
+      MaintenanceView()
     case .cleanupHistory:
       CleanupReportView()
     case .settings:

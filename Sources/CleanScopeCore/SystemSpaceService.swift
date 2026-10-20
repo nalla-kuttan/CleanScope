@@ -50,10 +50,13 @@ public struct SystemSpaceService: Sendable {
     }.sorted()
   }
 
-  /// Asks macOS to remove local snapshots until `requestedBytes` are free, at the lowest urgency.
-  public func thin(requestedBytes: Int64) async throws {
+  /// Asks macOS to remove local snapshots until `requestedBytes` are free. Urgency 1 is the
+  /// lowest level; 4 is the highest.
+  public func thin(requestedBytes: Int64, urgency: Int = 1) async throws {
     let output = try await runner.run(
-      "/usr/bin/tmutil", ["thinlocalsnapshots", "/", String(requestedBytes), "1"], timeout: 120)
+      "/usr/bin/tmutil",
+      ["thinlocalsnapshots", "/", String(requestedBytes), String(min(max(urgency, 1), 4))],
+      timeout: 120)
     guard output.status == 0 else {
       let message = output.stderr.isEmpty ? output.stdout : output.stderr
       throw SystemSpaceError.commandFailed(message.trimmingCharacters(in: .whitespacesAndNewlines))
