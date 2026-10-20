@@ -13,6 +13,7 @@ struct CleanScopeApp: App {
         .environmentObject(model)
         .preferredColorScheme(previewColorScheme)
         .frame(minWidth: 1040, minHeight: 680)
+        .task { await model.applyLaunchArguments(ProcessInfo.processInfo.arguments) }
     }
     .commands {
       CommandGroup(after: .appInfo) {

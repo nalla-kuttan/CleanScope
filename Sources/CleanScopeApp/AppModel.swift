@@ -5,7 +5,17 @@ import SwiftUI
 @MainActor
 final class AppModel: ObservableObject {
   enum Destination: String, CaseIterable, Identifiable {
+    enum Section: String, CaseIterable, Identifiable {
+      case storage = "Storage"
+      case performance = "Performance"
+      case protection = "Protection"
+      case history = "History"
+
+      var id: String { rawValue }
+    }
+
     case dashboard = "Dashboard"
+    case storageMap = "Storage Map"
     case safeCleanup = "Safe Cleanup"
     case readyToDelete = "Ready to Delete"
     case largeFiles = "Large Files"
@@ -19,9 +29,17 @@ final class AppModel: ObservableObject {
 
     var id: String { rawValue }
 
+    var section: Section {
+      switch self {
+      case .cleanupHistory, .settings: return .history
+      default: return .storage
+      }
+    }
+
     var systemImage: String {
       switch self {
       case .dashboard: return "chart.bar.xaxis"
+      case .storageMap: return "square.grid.3x3.square"
       case .safeCleanup: return "checkmark.shield"
       case .readyToDelete: return "externaldrive.badge.checkmark"
       case .largeFiles: return "externaldrive.fill"
@@ -50,6 +68,8 @@ final class AppModel: ObservableObject {
     message: "Scan not started.",
     setupSteps: []
   )
+  @Published var purgeableBytes: Int64 = 0
+  @Published var localSnapshots: [Date] = []
 
   private let settingsStore: SettingsStore
   private let repository: ScanRepository
@@ -57,6 +77,7 @@ final class AppModel: ObservableObject {
   private let deletionService: DeletionService
   private let exclusionStore: ExclusionStore
   private var scanner: ScannerService?
+  private let systemSpace = SystemSpaceService()
 
   init(
     settingsStore: SettingsStore = SettingsStore(),
@@ -79,6 +100,11 @@ final class AppModel: ObservableObject {
   }
 
   func startScan(mode: ScanMode) async {
+    await startScan(paths: filteredLocations(for: mode), mode: mode)
+  }
+
+  /// Scans explicit paths, for example an external drive's root.
+  func startScan(paths: [String], mode: ScanMode) async {
     guard !isScanning else { return }
     BrandTheme.triggerHaptic()
     isScanning = true
@@ -90,7 +116,6 @@ final class AppModel: ObservableObject {
       largeFileThresholdBytes: settings.largeFileThresholdBytes
     )
     scanner = activeScanner
-    let paths = filteredLocations(for: mode)
     let completed = await activeScanner.scan(paths: paths, mode: mode, settings: settings) {
       [weak self] (result: ScanResult) in
       Task { @MainActor in
@@ -110,8 +135,44 @@ final class AppModel: ObservableObject {
     BrandTheme.triggerHaptic()
   }
 
+  /// Verification hooks: `--open-destination "<name>"` and `--start-scan limited|developer|full`.
+  func applyLaunchArguments(_ arguments: [String]) async {
+    func value(after flag: String) -> String? {
+      guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else {
+        return nil
+      }
+      return arguments[index + 1]
+    }
+    if let name = value(after: "--open-destination"), let match = Destination(rawValue: name) {
+      destination = match
+    }
+    if let path = value(after: "--scan-path") {
+      await startScan(paths: [path], mode: .limited)
+    } else if let modeName = value(after: "--start-scan"), let mode = ScanMode(rawValue: modeName) {
+      await startScan(mode: mode)
+    }
+  }
+
   func cancelScan() {
     scanner?.cancel()
+  }
+
+  func refreshSystemSpace() async {
+    purgeableBytes = systemSpace.purgeableBytes()
+    localSnapshots = await systemSpace.localSnapshots()
+  }
+
+  /// Asks macOS to thin local snapshots. Returns a short outcome message for the UI.
+  func thinLocalSnapshots(requestedBytes: Int64) async -> String {
+    do {
+      try await systemSpace.thin(requestedBytes: requestedBytes)
+      await refreshSystemSpace()
+      return "macOS finished thinning local snapshots."
+    } catch SystemSpaceError.commandFailed(let message) {
+      return message.isEmpty ? "macOS could not thin local snapshots." : message
+    } catch {
+      return "macOS could not thin local snapshots."
+    }
   }
 
   func toggleSelection(_ result: ScanResult) {

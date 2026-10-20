@@ -56,7 +56,8 @@ public struct ScanNode: Identifiable, Equatable, Sendable {
   /// The node at `path` in this subtree, if present.
   public func node(at path: String) -> ScanNode? {
     if self.path == path { return self }
-    guard path.hasPrefix(self.path) else { return nil }
+    let isSyntheticRoot = self.path.hasPrefix("scan://")
+    guard isSyntheticRoot || path.hasPrefix(self.path + "/") else { return nil }
     for child in children {
       if let found = child.node(at: path) { return found }
     }

@@ -41,6 +41,15 @@ struct SettingsView: View {
           )
         }
 
+        Section("System-managed space") {
+          Toggle(
+            "Offer to thin local Time Machine snapshots",
+            isOn: $model.settings.allowSnapshotThinning)
+          Text("Backups on your Time Machine disk are never affected.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+
         Section {
           Label("CleanScope moves allowed files to Trash by default.", systemImage: "trash")
             .foregroundStyle(.secondary)

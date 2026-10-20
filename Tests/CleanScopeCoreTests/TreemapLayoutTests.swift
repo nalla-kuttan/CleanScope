@@ -58,4 +58,13 @@ import Testing
     #expect(shown.last?.sizeBytes == 50)
     #expect(shown.last?.isOtherItems == true)
   }
+
+  @Test func nodeLookupDescendsFromSyntheticRoot() {
+    let leaf = ScanNode(path: "/a/b", name: "b", sizeBytes: 1, itemType: .folder)
+    let root = ScanNode(
+      path: "scan://locations", name: "Scanned locations", sizeBytes: 1, itemType: .folder,
+      children: [ScanNode(path: "/a", name: "a", sizeBytes: 1, itemType: .folder, children: [leaf])])
+    #expect(root.node(at: "/a/b") == leaf)
+    #expect(root.node(at: "/ab") == nil)
+  }
 }

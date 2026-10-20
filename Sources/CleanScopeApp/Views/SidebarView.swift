@@ -26,16 +26,29 @@ struct SidebarView: View {
 
       // Navigation rows
       ScrollView {
-        VStack(spacing: 3) {
-          ForEach(AppModel.Destination.allCases) { dest in
-            SidebarRow(
-              destination: dest,
-              isActive: model.destination == dest,
-              isHovered: hoveredDest == dest
-            ) {
-              model.destination = dest
+        VStack(alignment: .leading, spacing: 3) {
+          ForEach(AppModel.Destination.Section.allCases) { section in
+            let destinations = AppModel.Destination.allCases.filter { $0.section == section }
+            if !destinations.isEmpty {
+              Text(section.rawValue)
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundStyle(BrandTheme.warmGray)
+                .textCase(.uppercase)
+                .padding(.horizontal, 10)
+                .padding(.top, section == .storage ? 0 : 10)
+                .padding(.bottom, 2)
+                .accessibilityAddTraits(.isHeader)
+              ForEach(destinations) { dest in
+                SidebarRow(
+                  destination: dest,
+                  isActive: model.destination == dest,
+                  isHovered: hoveredDest == dest
+                ) {
+                  model.destination = dest
+                }
+                .onHover { over in hoveredDest = over ? dest : nil }
+              }
             }
-            .onHover { over in hoveredDest = over ? dest : nil }
           }
         }
         .padding(.horizontal, 10)

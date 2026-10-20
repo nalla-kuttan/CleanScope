@@ -24,6 +24,8 @@ struct ContentView: View {
     switch model.destination ?? .dashboard {
     case .dashboard:
       DashboardView()
+    case .storageMap:
+      StorageMapView()
     case .safeCleanup:
       ResultsView(title: "Safe Cleanup", filter: { $0.category == .safeToDelete })
     case .readyToDelete:

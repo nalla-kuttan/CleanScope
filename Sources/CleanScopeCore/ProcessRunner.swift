@@ -41,16 +41,16 @@ public struct ProcessRunner: ProcessRunning {
     return try await withCheckedThrowingContinuation { continuation in
       let state = RunState()
       let group = DispatchGroup()
-      var outData = Data()
-      var errData = Data()
+      let outData = DataBox()
+      let errData = DataBox()
       group.enter()
       DispatchQueue.global().async {
-        outData = stdout.fileHandleForReading.readDataToEndOfFile()
+        outData.set(stdout.fileHandleForReading.readDataToEndOfFile())
         group.leave()
       }
       group.enter()
       DispatchQueue.global().async {
-        errData = stderr.fileHandleForReading.readDataToEndOfFile()
+        errData.set(stderr.fileHandleForReading.readDataToEndOfFile())
         group.leave()
       }
 
@@ -60,8 +60,8 @@ public struct ProcessRunner: ProcessRunning {
           continuation.resume(
             returning: ProcessOutput(
               status: finished.terminationStatus,
-              stdout: String(decoding: outData, as: UTF8.self),
-              stderr: String(decoding: errData, as: UTF8.self)))
+              stdout: String(decoding: outData.value, as: UTF8.self),
+              stderr: String(decoding: errData.value, as: UTF8.self)))
         }
       }
 
@@ -95,4 +95,12 @@ private final class RunState: @unchecked Sendable {
       return true
     }
   }
+}
+
+private final class DataBox: @unchecked Sendable {
+  private let lock = NSLock()
+  private var data = Data()
+
+  func set(_ newValue: Data) { lock.withLock { data = newValue } }
+  var value: Data { lock.withLock { data } }
 }

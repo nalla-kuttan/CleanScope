@@ -63,6 +63,8 @@ struct DashboardView: View {
           )
         }
 
+        SystemSpaceCard()
+
         PermissionBannerView(summary: model.permissionSummary)
 
         VStack(alignment: .leading, spacing: 10) {
@@ -116,6 +118,7 @@ struct DashboardView: View {
       .frame(maxWidth: 1180, alignment: .leading)
     }
     .background(BrandTheme.cream)
+    .task { await model.refreshSystemSpace() }
     .sheet(item: $selectedResult) { result in
       ItemDetailView(result: result)
     }
