@@ -73,6 +73,9 @@ public struct ScanResult: Identifiable, Codable, Equatable, Sendable {
   public var requiresAdmin: Bool
   /// Id of the classification rule that produced the category, when one matched.
   public var ruleId: String?
+  /// For a grouped result (for example every `.DS_Store` on a drive), the files it stands for.
+  /// Cleanup removes these and never the result's own path.
+  public var memberPaths: [String]?
 
   public init(
     id: String = UUID().uuidString,
@@ -99,7 +102,8 @@ public struct ScanResult: Identifiable, Codable, Equatable, Sendable {
     isCloudOnly: Bool = false,
     cloudOnlyBytes: Int64 = 0,
     requiresAdmin: Bool = false,
-    ruleId: String? = nil
+    ruleId: String? = nil,
+    memberPaths: [String]? = nil
   ) {
     self.id = id
     self.name = name
@@ -126,13 +130,14 @@ public struct ScanResult: Identifiable, Codable, Equatable, Sendable {
     self.cloudOnlyBytes = cloudOnlyBytes
     self.requiresAdmin = requiresAdmin
     self.ruleId = ruleId
+    self.memberPaths = memberPaths
   }
 
   private enum CodingKeys: String, CodingKey {
     case id, name, path, normalizedPath, sizeBytes, itemType, category, confidence, reason
     case riskNote, recommendedAction, lastModified, ownerApp, ownerTool, fileExtension
     case isHidden, isProtected, isSynced, isExcluded, canDelete, deletionMethod
-    case isCloudOnly, cloudOnlyBytes, requiresAdmin, ruleId
+    case isCloudOnly, cloudOnlyBytes, requiresAdmin, ruleId, memberPaths
   }
 
   public init(from decoder: Decoder) throws {
@@ -162,6 +167,7 @@ public struct ScanResult: Identifiable, Codable, Equatable, Sendable {
     cloudOnlyBytes = try c.decodeIfPresent(Int64.self, forKey: .cloudOnlyBytes) ?? 0
     requiresAdmin = try c.decodeIfPresent(Bool.self, forKey: .requiresAdmin) ?? false
     ruleId = try c.decodeIfPresent(String.self, forKey: .ruleId)
+    memberPaths = try c.decodeIfPresent([String].self, forKey: .memberPaths)
   }
 }
 

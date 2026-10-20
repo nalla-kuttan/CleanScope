@@ -62,6 +62,15 @@ struct ContentView: View {
         filter: {
           $0.normalizedPath.localizedCaseInsensitiveContains("/.Trash/")
         })
+    case .leftovers:
+      ResultsView(
+        title: "Leftovers",
+        filter: { $0.ruleId == LeftoverFinder.ruleID },
+        subtitle: "Files left behind by apps you moved to the Trash.",
+        emptyTitle: "No leftovers found",
+        emptyMessage:
+          "When an app is in the Trash and no other copy is installed, its leftover files appear here after a scan."
+      )
     case .cleanupHistory:
       CleanupReportView()
     case .settings:

@@ -32,6 +32,19 @@ private final class VisitedPaths: @unchecked Sendable {
   }
 }
 
+/// Extra cleanup applied when the scan root is an external drive.
+public struct VolumeCleanupOptions: Equatable, Sendable {
+  /// Lists every `.DS_Store` file as one grouped result.
+  public var groupsDSStore: Bool
+  /// Lists every `._*` AppleDouble file as one grouped result (FAT, exFAT and NTFS drives).
+  public var groupsAppleDouble: Bool
+
+  public init(groupsDSStore: Bool, groupsAppleDouble: Bool) {
+    self.groupsDSStore = groupsDSStore
+    self.groupsAppleDouble = groupsAppleDouble
+  }
+}
+
 public struct DiskSnapshot: Equatable, Sendable {
   public var totalBytes: Int64
   public var availableBytes: Int64
@@ -48,18 +61,33 @@ public actor ScannerService {
   private let largeFileThresholdBytes: Int64
   private let maxConcurrency: Int
   private let treeDepth: Int
+  private let volumeOptions: @Sendable (URL) -> VolumeCleanupOptions?
   private let cancellationState = ScanCancellationState()
 
   public init(
     classifier: ClassificationService,
     largeFileThresholdBytes: Int64 = Settings.default.largeFileThresholdBytes,
     maxConcurrency: Int = min(ProcessInfo.processInfo.activeProcessorCount, 6),
-    treeDepth: Int = 6
+    treeDepth: Int = 6,
+    volumeOptions: @escaping @Sendable (URL) -> VolumeCleanupOptions? = ScannerService
+      .externalVolumeOptions
   ) {
     self.classifier = classifier
     self.largeFileThresholdBytes = largeFileThresholdBytes
     self.maxConcurrency = max(1, maxConcurrency)
     self.treeDepth = treeDepth
+    self.volumeOptions = volumeOptions
+  }
+
+  /// Drive cleanup applies to roots under `/Volumes`. AppleDouble files are only listed on
+  /// FAT, exFAT and NTFS drives, where they are copies of Mac metadata.
+  public static let externalVolumeOptions: @Sendable (URL) -> VolumeCleanupOptions? = { url in
+    guard url.path.hasPrefix("/Volumes/") else { return nil }
+    let format =
+      (try? url.resourceValues(forKeys: [.volumeLocalizedFormatDescriptionKey]))?
+      .volumeLocalizedFormatDescription?.lowercased() ?? ""
+    let isForeign = format.contains("fat") || format.contains("ntfs")
+    return VolumeCleanupOptions(groupsDSStore: true, groupsAppleDouble: isForeign)
   }
 
   public nonisolated func cancel() {
@@ -105,7 +133,7 @@ public actor ScannerService {
     var rootIndex: Int
     var childIndex: Int
     var url: URL
-    var guarded: Bool
+    var root: TreeWalker.RootContext
   }
 
   private func scanRoots(
@@ -126,6 +154,7 @@ public actor ScannerService {
     var openFolders: [Int: TreeWalker.OpenFolder] = [:]
     var rootVisits: [Int: TreeWalker.Visit] = [:]
     var items: [WorkItem] = []
+    var rootContexts: [Int: TreeWalker.RootContext] = [:]
 
     for (index, url) in roots.enumerated() where !cancellationState.isCancelled {
       guard FileManager.default.fileExists(atPath: url.path) else {
@@ -152,15 +181,17 @@ public actor ScannerService {
       }
 
       // A root inside a guarded system path (for example an external drive) is scanned as asked.
-      let guarded = !SystemPathGuard.shouldSkip(url.path)
-      switch walker.begin(url, depth: 0, guarded: guarded) {
+      let root = TreeWalker.RootContext(
+        guarded: !SystemPathGuard.shouldSkip(url.path), volume: volumeOptions(url))
+      rootContexts[index] = root
+      switch walker.begin(url, depth: 0, root: root) {
       case .done(let visit):
         rootVisits[index] = visit
       case .folder(let folder):
         openFolders[index] = folder
         for (childIndex, child) in folder.children.enumerated() {
           items.append(
-            WorkItem(rootIndex: index, childIndex: childIndex, url: child, guarded: guarded))
+            WorkItem(rootIndex: index, childIndex: childIndex, url: child, root: root))
         }
       }
     }
@@ -170,13 +201,15 @@ public actor ScannerService {
       var pending = items.makeIterator()
       for _ in 0..<maxConcurrency {
         guard let item = pending.next() else { break }
-        group.addTask { (item.rootIndex, item.childIndex, walker.visit(item.url, depth: 1, guarded: item.guarded)) }
+        group.addTask {
+          (item.rootIndex, item.childIndex, walker.visit(item.url, depth: 1, root: item.root))
+        }
       }
       while let (rootIndex, childIndex, visit) = await group.next() {
         childVisits[rootIndex, default: [:]][childIndex] = visit
         if let item = pending.next() {
           group.addTask {
-            (item.rootIndex, item.childIndex, walker.visit(item.url, depth: 1, guarded: item.guarded))
+            (item.rootIndex, item.childIndex, walker.visit(item.url, depth: 1, root: item.root))
           }
         }
       }
@@ -189,7 +222,11 @@ public actor ScannerService {
 
     var rootNodes: [ScanNode] = []
     for index in roots.indices {
-      guard let visit = rootVisits[index] else { continue }
+      guard var visit = rootVisits[index] else { continue }
+      for group in walker.groupedResults(root: roots[index], members: visit.grouped) {
+        visit.results.append(group)
+        onResult(group)
+      }
       outcome.results += visit.results
       outcome.skipped += visit.skipped
       if let node = visit.node { rootNodes.append(node) }
@@ -221,11 +258,24 @@ public actor ScannerService {
 /// Walks one subtree synchronously. Work items run walkers in parallel; all shared state is
 /// lock-protected or immutable.
 private struct TreeWalker: Sendable {
+  struct RootContext: Sendable {
+    /// False when the root itself is inside a guarded system path, such as a drive in /Volumes.
+    var guarded: Bool
+    var volume: VolumeCleanupOptions?
+  }
+
+  struct Member: Sendable {
+    var path: String
+    var bytes: Int64
+  }
+
   struct Visit: Sendable {
     var bytes: Int64 = 0
     var results: [ScanResult] = []
     var skipped: [SkippedPath] = []
     var node: ScanNode?
+    /// Small files collected into one result per root, keyed by rule id.
+    var grouped: [String: [Member]] = [:]
   }
 
   struct OpenFolder: Sendable {
@@ -288,28 +338,28 @@ private struct TreeWalker: Sendable {
     self.onResult = onResult
   }
 
-  func visit(_ url: URL, depth: Int, guarded: Bool) -> Visit {
-    switch begin(url, depth: depth, guarded: guarded) {
+  func visit(_ url: URL, depth: Int, root: RootContext) -> Visit {
+    switch begin(url, depth: depth, root: root) {
     case .done(let visit):
       return visit
     case .folder(let folder):
       var childVisits: [Visit] = []
       childVisits.reserveCapacity(folder.children.count)
       for child in folder.children where !cancellation.isCancelled {
-        childVisits.append(visit(child, depth: depth + 1, guarded: guarded))
+        childVisits.append(visit(child, depth: depth + 1, root: root))
       }
       return finish(folder, childVisits: childVisits)
     }
   }
 
   /// Checks one item. Files finish here; folders return their children for the caller to visit.
-  func begin(_ url: URL, depth: Int, guarded: Bool) -> Entry {
+  func begin(_ url: URL, depth: Int, root: RootContext) -> Entry {
     var visit = Visit()
     guard !cancellation.isCancelled else { return .done(visit) }
     if url.lastPathComponent.hasPrefix("."), !settings.scanHiddenFolders {
       return .done(visit)
     }
-    if guarded, depth > 0, SystemPathGuard.shouldSkip(url.path) {
+    if root.guarded, depth > 0, SystemPathGuard.shouldSkip(url.path) {
       return .done(visit)
     }
 
@@ -354,6 +404,13 @@ private struct TreeWalker: Sendable {
           includingPropertiesForKeys: Array(Self.resourceKeys),
           options: [.skipsPackageDescendants]
         )
+        if root.volume?.groupsAppleDouble == true {
+          for file in PosixDirectory.appleDoubleFiles(in: url.path) {
+            visit.grouped["safe.appledouble", default: []].append(
+              Member(path: file.path, bytes: file.bytes))
+            visit.bytes += file.bytes
+          }
+        }
         return .folder(
           OpenFolder(
             url: url, depth: depth, lastModified: values.contentModificationDate,
@@ -364,7 +421,9 @@ private struct TreeWalker: Sendable {
       let bytes =
         flags.isDataless ? 0 : Int64(values.totalFileAllocatedSize ?? values.fileSize ?? 0)
       var resultId: String?
-      if shouldEmitFile(url: url, bytes: flags.isDataless ? logicalBytes : bytes) {
+      if let group = groupRule(for: url.lastPathComponent, root: root) {
+        visit.grouped[group, default: []].append(Member(path: url.path, bytes: bytes))
+      } else if shouldEmitFile(url: url, bytes: flags.isDataless ? logicalBytes : bytes) {
         let result = classifier.classify(
           ClassifiedItemInput(
             path: url.path,
@@ -406,6 +465,7 @@ private struct TreeWalker: Sendable {
       visit.bytes += child.bytes
       visit.results += child.results
       visit.skipped += child.skipped
+      visit.grouped.merge(child.grouped) { $0 + $1 }
       if let node = child.node { childNodes.append(node) }
     }
 
@@ -469,6 +529,31 @@ private struct TreeWalker: Sendable {
       return nil
     }
     return candidate
+  }
+
+  private func groupRule(for name: String, root: RootContext) -> String? {
+    guard let volume = root.volume else { return nil }
+    if volume.groupsDSStore && name == ".DS_Store" { return "safe.ds-store" }
+    if volume.groupsAppleDouble && name.hasPrefix("._") { return "safe.appledouble" }
+    return nil
+  }
+
+  /// One result per grouped rule, standing for every member file under `root`.
+  func groupedResults(root: URL, members: [String: [Member]]) -> [ScanResult] {
+    members.keys.sorted().compactMap { ruleId in
+      guard let files = members[ruleId], let first = files.first else { return nil }
+      let bytes = files.reduce(0) { $0 + $1.bytes }
+      var result = classifier.classify(
+        ClassifiedItemInput(path: first.path, sizeBytes: bytes, itemType: .file))
+      guard result.ruleId == ruleId else { return nil }
+      let label = ruleId == "safe.ds-store" ? ".DS_Store" : "AppleDouble (._)"
+      result.name = "\(files.count) \(label) file\(files.count == 1 ? "" : "s")"
+      result.path = root.path
+      result.normalizedPath = root.standardizedFileURL.path
+      result.memberPaths = files.map(\.path)
+      result.fileExtension = nil
+      return result
+    }
   }
 
   private func shouldEmitFile(url: URL, bytes: Int64) -> Bool {

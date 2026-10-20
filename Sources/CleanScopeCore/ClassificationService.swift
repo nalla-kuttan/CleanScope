@@ -208,6 +208,54 @@ public struct ClassificationService: Sendable {
         "Virtual machine bundles and disks may contain complete operating systems and files."
     ),
     ClassificationRule(
+      id: "protect.volume-system",
+      name: "Drive system data",
+      matcher: .all([
+        .pathPrefix("/volumes/"),
+        .any([
+          .pathComponent(".spotlight-v100"),
+          .pathComponent(".fseventsd"),
+          .pathComponent(".documentrevisions-v100"),
+          .pathComponent(".temporaryitems"),
+        ]),
+      ]),
+      category: .doNotBulkDelete,
+      confidence: .high,
+      specificity: 100,
+      reason: "Managed by macOS",
+      riskNote: "macOS uses this folder for search, file history or saving. It manages the space itself."
+    ),
+    ClassificationRule(
+      id: "safe.volume-trashes",
+      name: "Drive Trash",
+      matcher: .all([.pathPrefix("/volumes/"), .pathComponent(".trashes")]),
+      category: .safeToDelete,
+      confidence: .high,
+      specificity: 80,
+      reason: "Items in this drive's Trash",
+      riskNote: "These items were already moved to the Trash on this drive."
+    ),
+    ClassificationRule(
+      id: "safe.appledouble",
+      name: "AppleDouble file",
+      matcher: .all([.itemType(.file), .nameMatches(#"^\._."#)]),
+      category: .safeToDelete,
+      confidence: .high,
+      specificity: 72,
+      reason: "Mac metadata copies on a non-Mac drive",
+      riskNote: "Other computers ignore these files. Finder labels and tags on this drive may be lost."
+    ),
+    ClassificationRule(
+      id: "safe.ds-store",
+      name: "Finder view settings",
+      matcher: .all([.itemType(.file), .nameEquals(".ds_store")]),
+      category: .safeToDelete,
+      confidence: .high,
+      specificity: 72,
+      reason: "Finder window settings",
+      riskNote: "Finder recreates these files. Folder icon positions may reset."
+    ),
+    ClassificationRule(
       id: "safe.known-caches",
       name: "Known cache or temporary data",
       matcher: .any([

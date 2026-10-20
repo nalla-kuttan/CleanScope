@@ -48,6 +48,25 @@ struct MenuBarContentView: View {
         }
       }
 
+      ForEach(status.externalVolumes, id: \.uuid) { volume in
+        HStack {
+          Image(systemName: "externaldrive")
+          Text(volume.name).lineLimit(1)
+          Spacer()
+          Text("\(ByteCount.string(volume.availableBytes)) free")
+            .monospacedDigit()
+            .foregroundStyle(.secondary)
+          if let url = volume.url {
+            Button("Scan") {
+              openMainWindow()
+              Task { await model.scanDrive(at: url.path) }
+            }
+            .controlSize(.small)
+            .disabled(model.isScanning)
+          }
+        }
+      }
+
       Text(lastScanLine)
         .font(.caption)
         .foregroundStyle(.secondary)

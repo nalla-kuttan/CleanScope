@@ -26,6 +26,7 @@ final class AppModel: ObservableObject {
     case appSupport = "App Support"
     case downloads = "Downloads"
     case trash = "Trash"
+    case leftovers = "Leftovers"
     case cleanupHistory = "Cleanup History"
     case settings = "Settings"
 
@@ -50,6 +51,7 @@ final class AppModel: ObservableObject {
       case .appSupport: return "shippingbox"
       case .downloads: return "arrow.down.circle"
       case .trash: return "trash"
+      case .leftovers: return "shippingbox.and.arrow.backward"
       case .cleanupHistory: return "clock.arrow.circlepath"
       case .settings: return "gearshape"
       }
@@ -159,8 +161,7 @@ final class AppModel: ObservableObject {
     case .openTrash:
       NSWorkspace.shared.open(TrashService.userTrash)
     case .scanDrive(let volumePath):
-      destination = .safeCleanup
-      Task { await startScan(paths: [volumePath], mode: .full) }
+      Task { await scanDrive(at: volumePath) }
     case .open(let target):
       destination = target
     case .forceQuit(let pid):
@@ -181,9 +182,20 @@ final class AppModel: ObservableObject {
     await startScan(paths: filteredLocations(for: mode), mode: mode)
   }
 
+  /// Scans an external drive's root, including hidden folders such as `.Trashes`.
+  func scanDrive(at path: String) async {
+    var driveSettings = settings
+    driveSettings.scanHiddenFolders = true
+    destination = .safeCleanup
+    await startScan(paths: [path], mode: .full, settings: driveSettings)
+  }
+
   /// Scans explicit paths, for example an external drive's root.
-  func startScan(paths: [String], mode: ScanMode) async {
+  func startScan(
+    paths: [String], mode: ScanMode, settings scanSettings: CleanScopeCore.Settings? = nil
+  ) async {
     guard !isScanning else { return }
+    let scanSettings = scanSettings ?? settings
     BrandTheme.triggerHaptic()
     isScanning = true
     streamedResults = []
@@ -194,7 +206,7 @@ final class AppModel: ObservableObject {
       largeFileThresholdBytes: settings.largeFileThresholdBytes
     )
     scanner = activeScanner
-    let completed = await activeScanner.scan(paths: paths, mode: mode, settings: settings) {
+    var completed = await activeScanner.scan(paths: paths, mode: mode, settings: scanSettings) {
       [weak self] (result: ScanResult) in
       Task { @MainActor in
         guard let self, self.isScanning else { return }
@@ -202,6 +214,12 @@ final class AppModel: ObservableObject {
       }
     }
 
+    if completed.status == .completed {
+      let known = Set(completed.results.map(\.normalizedPath))
+      let leftovers = await Task.detached { LeftoverFinder().allLeftovers() }.value
+      completed.results += leftovers.filter { !known.contains($0.normalizedPath) }
+      completed.summary = ScanSummary(results: completed.results)
+    }
     session = completed
     streamedResults = completed.results
     if settings.preselectSafeCaches && completed.status == .completed {

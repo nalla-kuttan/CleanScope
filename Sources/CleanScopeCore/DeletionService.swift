@@ -78,17 +78,19 @@ public actor DeletionService {
         continue
       }
 
-      let url = URL(fileURLWithPath: item.normalizedPath)
-      if method == .permanent {
-        if await fileRemover(url) {
-          record(item, .deleted, "Deleted permanently.")
-        } else {
-          record(item, .failed, "Could not delete item.")
-        }
-      } else if await fileMover(url) {
-        record(item, .deleted, "Moved to Trash.")
+      // A grouped result removes its members, never its own path.
+      let urls = (item.memberPaths ?? [item.normalizedPath]).map { URL(fileURLWithPath: $0) }
+      var allRemoved = !urls.isEmpty
+      for url in urls {
+        let removed = method == .permanent ? await fileRemover(url) : await fileMover(url)
+        allRemoved = allRemoved && removed
+      }
+      if allRemoved {
+        record(item, .deleted, method == .permanent ? "Deleted permanently." : "Moved to Trash.")
       } else {
-        record(item, .failed, "Could not move item to Trash.")
+        record(
+          item, .failed,
+          method == .permanent ? "Could not delete item." : "Could not move item to Trash.")
       }
     }
 
@@ -126,7 +128,9 @@ public actor DeletionService {
       return items.map { ($0, .failed, "Needs an administrator to remove.") }
     }
 
-    let quoted = items.map { ShellQuote.quote($0.normalizedPath) }.joined(separator: " ")
+    let paths = items.flatMap { $0.memberPaths ?? [$0.normalizedPath] }
+    guard !paths.isEmpty else { return items.map { ($0, .skipped, "Nothing to remove.") } }
+    let quoted = paths.map(ShellQuote.quote).joined(separator: " ")
     let command = method == .permanent ? "/bin/rm -rf \(quoted)" : "/usr/bin/trash \(quoted)"
     do {
       _ = try await privileged.run(command: command)
@@ -138,7 +142,9 @@ public actor DeletionService {
 
     let success = method == .permanent ? "Deleted permanently." : "Moved to Trash."
     return items.map { item in
-      FileManager.default.fileExists(atPath: item.normalizedPath)
+      (item.memberPaths ?? [item.normalizedPath]).contains {
+        FileManager.default.fileExists(atPath: $0)
+      }
         ? (item, .failed, "The item is still in place.")
         : (item, .deleted, success)
     }
