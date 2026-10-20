@@ -75,3 +75,26 @@ interfaces or omits automatic Swift Testing framework paths.
 - Accessibility: live accessibility output exposed Select/Deselect all labels, selected values, disabled review state, and individual row selection values.
 - Layout: verified in the default expanded window with the Ready to Delete subtitle, selection control, summary actions, table columns, and long paths visible without overlap.
 - Safety: no cleanup confirmation was activated and no files were moved to Trash during verification.
+
+## Gap Features Checks
+
+- A Developer scan lists container caches and Chromium caches as Safe to delete. IndexedDB and Local Storage are never listed as safe.
+- Cloud-only files show the cloud badge, count 0 bytes, and can't be selected.
+- The Storage Map drill-down and the selection made from it match the list view.
+- The menu bar extra is off by default. Enabling it keeps the app alive after the window closes.
+- The low-disk and Trash alerts respect snooze and don't repeat.
+- Delete immediately asks for a second confirmation with item count and size, including for single-item actions.
+- Protection finds the EICAR test file in a scanned folder, inside a ZIP, and nothing in a clean folder.
+
+## 2026-10-20 — CleanMyMac gap features
+
+- `./script/swiftpm.sh test`: passed with 184 tests in 31 suites.
+- `./script/swiftpm.sh build`: passed with no warnings.
+- `./script/build_and_run.sh --verify`: passed; the app bundle launched and kept running.
+- Parallel scanning (F4): a warm Developer scan of this Mac took 16.9 s serial (`maxConcurrency: 1`) and 6.6 s with 6 workers, with the same 3,601 results. The automated test compares serial and parallel result sets on a fixture with a symlink and duplicate roots.
+- Verified on macOS 27.0 (Apple Silicon): `/usr/sbin/periodic` is absent (the task is hidden), `/usr/bin/trash` exists, `XProtect.yara` exists, many containers are UUID-named (bundle id read from container metadata), battery capacities sit in the nested `BatteryData` dictionary, and Foundation's directory listing hides `._` AppleDouble files (the drive cleaner reads them with `readdir`).
+- Live samplers on this Mac: CPU, network, battery charge and battery health read correctly; no Bluetooth accessories reported `BatteryPercent`; the experimental SMC temperature returned no reading, so its row stays hidden.
+- Rule signing: a manifest from `script/sign_rules.swift` verified with the app's verifier.
+- Live UI checked by window capture: sidebar sections and the System-managed space card on the Dashboard, and the Storage Map empty and scanning states.
+- Not verified live: Storage Map tiles with real data, the menu bar extra, notifications and their actions, administrator prompts, login items through System Events, real-time protection events, and hung-app detection. Scans in the rebuilt ad-hoc–signed app stopped at macOS privacy prompts (Downloads, other apps' data), and window capture started asking for screen-recording access, so those checks need a person at the Mac.
+- `tmutil thinlocalsnapshots` without administrator rights (Open Question 1) was not run, to avoid removing snapshots during verification. The action is off by default and shows macOS's error if it fails.
