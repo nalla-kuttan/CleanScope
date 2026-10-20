@@ -1,112 +1,113 @@
 import CleanScopeCore
 import SwiftUI
 
+/// The dashboard's one summary surface: safe space first, review-needed space second,
+/// and the real disk it belongs to.
 struct GrowthSummaryView: View {
-  var cleanableBytes: Int64
-  var resultCount: Int
+  var summary: ScanSummary
+  var safeCount: Int
+  var reviewCount: Int
+  var disk: AppModel.Disk?
   var isScanning: Bool
-  var reduceMotion: Bool
+  var hasScanned: Bool
 
-  // Simulated total disk for gauge display
-  private var totalDiskBytes: Int64 { 500_000_000_000 } // 500 GB placeholder
-  private var reclaimFraction: Double {
-    guard totalDiskBytes > 0 else { return 0 }
-    return min(Double(cleanableBytes) / Double(totalDiskBytes), 1.0)
-  }
-
-  @State private var gaugeProgress: Double = 0
+  private var reviewBytes: Int64 { summary.probablyUnusedBytes + summary.deleteIfAppUnusedBytes }
 
   var body: some View {
-    HStack(spacing: 28) {
-      // Radial Arc Gauge
-      ZStack {
-        // Background arc (full track)
-        Circle()
-          .trim(from: 0, to: 0.75)
-          .stroke(BrandTheme.clay, style: StrokeStyle(lineWidth: 12, lineCap: .round))
-          .rotationEffect(.degrees(135))
+    HStack(alignment: .top, spacing: 20) {
+      BrandMarkView(
+        size: 56, field: true, isDecorative: true,
+        growthStage: StoragePresentation.growthStage(
+          resultCount: summary.totalResults, isScanning: isScanning)
+      )
 
-        // Reclaimable segment
-        Circle()
-          .trim(from: 0, to: gaugeProgress * 0.75)
-          .stroke(BrandTheme.sageGradient, style: StrokeStyle(lineWidth: 12, lineCap: .round))
-          .rotationEffect(.degrees(135))
-
-        // Center text
-        VStack(spacing: 2) {
-          Text(ByteCount.string(cleanableBytes))
-            .font(.system(size: 22, weight: .bold, design: .rounded))
-            .foregroundStyle(BrandTheme.bark)
+      VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 2) {
+          Text("Safe to reclaim")
+            .font(.callout.weight(.medium))
+            .foregroundStyle(BrandTheme.textSecondary)
+          Text(hasScanned || isScanning ? ByteCount.string(summary.safeToDeleteBytes) : "—")
+            .font(.system(size: 30, weight: .bold, design: .rounded))
             .monospacedDigit()
-          Text("reclaimable")
-            .font(.system(size: 10, weight: .medium, design: .rounded))
-            .foregroundStyle(BrandTheme.warmGray)
-        }
-      }
-      .frame(width: 120, height: 120)
-      .padding(.vertical, 6)
-      .onAppear {
-        if reduceMotion {
-          gaugeProgress = reclaimFraction
-        } else {
-          withAnimation(.easeOut(duration: 1.0).delay(0.2)) {
-            gaugeProgress = reclaimFraction
+            .foregroundStyle(BrandTheme.textPrimary)
+          if hasScanned || isScanning {
+            Text(detailLine)
+              .font(.callout)
+              .foregroundStyle(BrandTheme.textSecondary)
+              .fixedSize(horizontal: false, vertical: true)
           }
         }
-      }
-      .onChange(of: cleanableBytes) { _ in
-        withAnimation(.easeOut(duration: 0.6)) {
-          gaugeProgress = reclaimFraction
+        .accessibilityElement(children: .combine)
+
+        if let disk {
+          DiskBar(disk: disk, safeBytes: summary.safeToDeleteBytes)
         }
-      }
-
-      // Text summary
-      VStack(alignment: .leading, spacing: 6) {
-        Text(isScanning ? "Discovering space…" : "Ready to reclaim")
-          .font(.system(.subheadline, design: .rounded).weight(.semibold))
-          .foregroundStyle(BrandTheme.sage)
-
-        Text("\(resultCount) items found")
-          .font(.system(size: 30, weight: .bold, design: .rounded))
-          .foregroundStyle(BrandTheme.bark)
-
-        Text(statusLine)
-          .font(.system(.caption, design: .rounded))
-          .foregroundStyle(BrandTheme.warmGray)
-          .fixedSize(horizontal: false, vertical: true)
 
         if isScanning {
           HStack(spacing: 6) {
-            ProgressView()
-              .controlSize(.small)
-            Text("scanning…")
-              .font(.system(.caption, design: .rounded))
-              .foregroundStyle(BrandTheme.warmGray)
+            ProgressView().controlSize(.small)
+            Text("Results appear as each location is checked.")
+              .font(.callout)
+              .foregroundStyle(BrandTheme.textSecondary)
           }
-          .padding(.top, 2)
         }
       }
-
       Spacer(minLength: 0)
     }
     .padding(20)
     .background(
       RoundedRectangle(cornerRadius: BrandTheme.radius, style: .continuous)
-        .fill(BrandTheme.clay)
-    )
-    .overlay(
-      RoundedRectangle(cornerRadius: BrandTheme.radius, style: .continuous)
-        .stroke(BrandTheme.hairline)
+        .fill(BrandTheme.surfaceRaised)
     )
   }
 
-  private var statusLine: String {
-    if isScanning {
-      return "Results stream in as locations are checked."
+  private var detailLine: String {
+    var parts = ["\(CountPhrase.make(safeCount, "safe item"))"]
+    if reviewBytes > 0 {
+      parts.append(
+        "\(ByteCount.string(reviewBytes)) more in \(CountPhrase.make(reviewCount, "item")) to review")
     }
-    if cleanableBytes == 0 {
-      return "Run a scan to discover reclaimable space."
+    return parts.joined(separator: " · ")
+  }
+}
+
+/// Used vs. available space on the startup disk, with the safe-to-reclaim share of used
+/// space marked inside it.
+private struct DiskBar: View {
+  var disk: AppModel.Disk
+  var safeBytes: Int64
+
+  private func fraction(_ bytes: Int64) -> CGFloat {
+    guard disk.totalBytes > 0 else { return 0 }
+    return CGFloat(min(max(Double(bytes) / Double(disk.totalBytes), 0), 1))
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      GeometryReader { geo in
+        let width = geo.size.width
+        ZStack(alignment: .leading) {
+          RoundedRectangle(cornerRadius: 3).fill(BrandTheme.hairline.opacity(0.6))
+          RoundedRectangle(cornerRadius: 3)
+            .fill(BrandTheme.textSecondary.opacity(0.55))
+            .frame(width: width * fraction(disk.usedBytes))
+          RoundedRectangle(cornerRadius: 3)
+            .fill(BrandTheme.safe)
+            .frame(width: width * fraction(min(safeBytes, disk.usedBytes)))
+            .offset(x: width * (fraction(disk.usedBytes) - fraction(min(safeBytes, disk.usedBytes))))
+        }
+      }
+      .frame(height: 8)
+      .frame(maxWidth: 420)
+      .accessibilityHidden(true)
+
+      Text(
+        "\(ByteCount.string(disk.availableBytes)) available of \(ByteCount.string(disk.totalBytes))"
+      )
+      .font(.caption)
+      .monospacedDigit()
+      .foregroundStyle(BrandTheme.textSecondary)
     }
-    return "Your greenhouse is ready for pruning."
+    .accessibilityElement(children: .combine)
   }
 }

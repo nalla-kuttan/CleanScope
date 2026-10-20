@@ -1,10 +1,17 @@
-# CleanScope Space Garden Verification
+# CleanScope Verification
 
 ## Automated
 
 - `./script/swiftpm.sh test` passes.
 - `./script/swiftpm.sh build` passes.
 - `./script/build_and_run.sh --verify` builds a real app bundle, launches it, and confirms the process is running.
+
+- Visual check (debug builds only, needs no Screen Recording permission):
+  `dist/CleanScope.app/Contents/MacOS/CleanScopeApp --snapshot-dir <dir>` writes a PNG of
+  every destination, an item detail sheet and the 820 × 560 minimum window, then quits.
+  Add `--dark-preview` for dark mode and `--snapshot-empty` for the never-scanned state.
+  It never scans or moves anything to Trash. The sidebar's material can't be drawn
+  in-process, so its rows appear blank in these captures.
 
 `script/swiftpm.sh` delegates to SwiftPM directly and works around incomplete
 Command Line Tools installations where Apple ships stale private manifest
@@ -37,28 +44,25 @@ interfaces or omits automatic Swift Testing framework paths.
 - Safety labels match: Safe to delete, Review recommended, App/tool dependent, Do not bulk delete.
 - Rows do not truncate the category label at the default macOS window size.
 
-## Space Garden UI States
+## UI States
 
-- Dashboard empty state shows the Sprout Lens, practical scan guidance, and Start Scan.
-- Scanning state changes the primary command to Cancel and grows through finite stages.
-- Completed dashboard shows reclaimable space, available space, safe/generated count, review count, permission status, and Quick Wins.
-- Permission-limited state exposes expandable Full Disk Access steps.
-- Safe Cleanup selection uses both a checkmark and state tint; risky rows remain disabled.
-- Review sheet names Trash and shows selected item count, bytes, and category breakdown.
-- Item detail exposes Finder, Exclude, and Move to Trash only when operational.
-- Cleanup report shows before/after availability plus deleted, skipped, blocked, and failed outcomes, including zero states.
-- Settings retains native toggles and stepper beneath the compact product header.
+- Dashboard before any scan: "Let’s see where your space went.", real disk capacity, "—" for safe space, and a Start Scan empty state.
+- Scanning: sidebar shows Cancel Scan plus a live count; the Sprout Lens grows through three stages.
+- Completed dashboard: safe-to-reclaim figure (nested folders counted once), review-needed space on its own line, disk bar, permission state, and up to six outermost quick wins.
+- Permission-limited state: "Open Full Disk Access" button plus expandable steps.
+- Results: native Table with sortable columns, search in the toolbar, checkbox column with shift-range selection, disabled checkboxes explain themselves on hover.
+- Every Move to Trash path opens the review sheet listing exact items; Return does not confirm.
+- Exclude shows an Undo bar; Settings lists exclusions with Remove; a rescan keeps excluded items undeletable.
+- Last Cleanup shows before/after availability plus moved, skipped, blocked, and failed outcomes, including zero states.
 
 ## Appearance and Accessibility
 
-- Light mode palette maintains contrast and does not rely on color alone for safety.
-- Dark mode palette maintains contrast across dashboard, results, sheets, settings, and report.
-- Reduce Motion removes scale transforms and uses immediate state changes or crossfades.
-- Every icon-only button has an accessibility label or help text.
-- Decorative Sprout Lens marks are hidden from VoiceOver; meaningful standalone marks announce CleanScope.
-- Default 1040 × 680 window shows the dashboard header, growth surface, metrics, permission banner, and Quick Wins heading without overlap.
-- Expanded window keeps content constrained and readable rather than stretching tables or copy excessively.
-- The custom app icon appears in Finder, the app bundle, and the Dock.
+- Every text token is at least 4.5:1 on both surfaces in light, dark and increased-contrast appearances (lowest 4.74:1); white on accent at least 4.6:1.
+- Safety category is always icon plus text label, never color alone.
+- Reduce Motion removes every animation; there is no hover scaling.
+- Sidebar and results support arrow keys, Return, ⌘A and VoiceOver selection state through native List and Table.
+- Icon-only buttons carry accessibility labels and help text.
+- Decorative Sprout Lens marks are hidden from VoiceOver.
 
 ## 2026-06-24 — Bulk selection and ready cache
 
@@ -98,3 +102,19 @@ interfaces or omits automatic Swift Testing framework paths.
 - Live UI checked by window capture: sidebar sections and the System-managed space card on the Dashboard, and the Storage Map empty and scanning states.
 - Not verified live: Storage Map tiles with real data, the menu bar extra, notifications and their actions, administrator prompts, login items through System Events, real-time protection events, and hung-app detection. Scans in the rebuilt ad-hoc–signed app stopped at macOS privacy prompts (Downloads, other apps' data), and window capture started asking for screen-recording access, so those checks need a person at the Mac.
 - `tmutil thinlocalsnapshots` without administrator rights (Open Question 1) was not run, to avoid removing snapshots during verification. The action is off by default and shows macOS's error if it fails.
+
+## 2026-10-20 — Audit fixes
+
+- `./script/swiftpm.sh test`: passed with 57 tests (new: exclusion remove/apply, count inflection, state headlines, nested-folder byte totals, cleanup plan trashing only outermost items).
+- `./script/swiftpm.sh build`: passed with no warnings.
+- `./script/build_and_run.sh --verify`: passed.
+- Snapshot pass in light, dark and never-scanned states: dashboard, all result destinations, Last Cleanup, item detail and the minimum window reviewed. The safe-to-reclaim figure on the live scan dropped from 8.01 GB to 1.85 GB once nested folders stopped being double-counted.
+- Sidebar structure confirmed from the view tree (3 sections, 10 destinations); its rows can't be rendered in-process.
+- Safety: no cleanup confirmation was activated and no files were moved to Trash during verification.
+
+## 2026-10-20 — Merge of audit fixes into gap features
+
+- `./script/swiftpm.sh build`: passed with no compiler warnings.
+- `./script/swiftpm.sh test`: passed with 196 tests in 33 suites, including the audit's `cleanupPlan*`, `outermost*` and exclusion tests and every gap-features suite.
+- Every destructive path, including single-item actions and "Delete immediately", goes through the cleanup review sheet, which hands back exactly the items it showed.
+- Not yet verified live: snapshot pass of the gap-features destinations in the audit layout.

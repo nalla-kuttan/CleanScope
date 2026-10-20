@@ -113,6 +113,50 @@ import Testing
     #expect(deselected == [b.id])
   }
 
+  @Test func cleanupPlanTouchesOnlyReviewedItems() async {
+    let reviewed = [resultFixture(path: "/tmp/quick-a"), resultFixture(path: "/tmp/quick-b")]
+    let selectedElsewhere = (0..<50).map { resultFixture(path: "/tmp/elsewhere-\($0)") }
+    let current = reviewed + selectedElsewhere
+    let selection = Set(selectedElsewhere.map(\.id))
+
+    let plan = ResultSelection.cleanupPlan(
+      reviewed: reviewed, current: current, selection: selection)
+
+    #expect(plan.items.map(\.id) == reviewed.map(\.id))
+    #expect(plan.remainingSelection == selection)
+
+    let trashed = TrashedPaths()
+    let service = DeletionService(
+      fileMover: { url in
+        await trashed.append(url.path)
+        return true
+      },
+      diskSnapshot: { 1_000 })
+    let session = await service.cleanup(selected: plan.items)
+
+    let trashedPaths = await trashed.paths
+    #expect(Set(trashedPaths) == Set(reviewed.map(\.normalizedPath)))
+    #expect(session.deletedItems.count == reviewed.count)
+  }
+
+  @Test func cleanupPlanRevalidatesReviewedItemsAgainstCurrentResults() {
+    let kept = resultFixture(path: "/tmp/kept")
+    var excludedSinceReview = resultFixture(path: "/tmp/excluded")
+    let missing = resultFixture(path: "/tmp/missing")
+    let reviewed = [kept, excludedSinceReview, missing]
+    excludedSinceReview.isExcluded = true
+    excludedSinceReview.canDelete = false
+
+    let plan = ResultSelection.cleanupPlan(
+      reviewed: reviewed,
+      current: [kept, excludedSinceReview],
+      selection: [kept.id, missing.id]
+    )
+
+    #expect(plan.items.map(\.id) == [kept.id])
+    #expect(plan.remainingSelection == [missing.id])
+  }
+
   private func resultFixture(
     path: String,
     category: SafetyCategory = .safeToDelete,
@@ -121,5 +165,74 @@ import Testing
     var result = ScanResult.fixture(path: path, sizeBytes: 100, category: category)
     result.confidence = confidence
     return result
+  }
+}
+
+private actor TrashedPaths {
+  private(set) var paths: [String] = []
+
+  func append(_ path: String) {
+    paths.append(path)
+  }
+
+  @Test func countPhraseInflectsSingularAndPlural() {
+    #expect(CountPhrase.make(0, "item") == "0 items")
+    #expect(CountPhrase.make(1, "item") == "1 item")
+    #expect(CountPhrase.make(2_709, "item") == "2,709 items")
+    #expect(CountPhrase.make(3, "category", plural: "categories") == "3 categories")
+  }
+
+  @Test func headlineFollowsScanState() {
+    #expect(
+      StoragePresentation.headline(hasScanned: false, isScanning: false, safeBytes: 0)
+        == "Let’s see where your space went.")
+    #expect(
+      StoragePresentation.headline(hasScanned: false, isScanning: true, safeBytes: 0)
+        == "Looking for room to grow…")
+    #expect(
+      StoragePresentation.headline(hasScanned: true, isScanning: false, safeBytes: 0)
+        == "Your Mac is already breathing easy.")
+    #expect(
+      StoragePresentation.headline(hasScanned: true, isScanning: false, safeBytes: 6_210_000_000)
+        .hasPrefix("You found "))
+  }
+
+  @Test func reviewLineCountsItemsNeedingAttention() {
+    #expect(StoragePresentation.reviewLine(count: 0) == nil)
+    #expect(StoragePresentation.reviewLine(count: 1) == "1 item deserves a closer look.")
+    #expect(StoragePresentation.reviewLine(count: 3) == "3 items deserve a closer look.")
+  }
+
+  @Test func outermostDropsResultsNestedInsideOtherResults() {
+    let parent = ScanResult.fixture(path: "/u/Library/Caches/Brave", sizeBytes: 100, category: .safeToDelete)
+    let child = ScanResult.fixture(path: "/u/Library/Caches/Brave/Default", sizeBytes: 90, category: .safeToDelete)
+    let sibling = ScanResult.fixture(path: "/u/Library/Caches/BraveOther", sizeBytes: 5, category: .safeToDelete)
+
+    let kept = ResultPresentation.outermost([child, parent, sibling])
+
+    #expect(kept.map(\ScanResult.path) == [parent.path, sibling.path])
+    #expect(ResultPresentation.totalBytes([child, parent, sibling]) == 105)
+  }
+
+  @Test func summariesDoNotDoubleCountNestedFolders() {
+    let parent = ScanResult.fixture(path: "/u/Library/Caches/Brave", sizeBytes: 100, category: .safeToDelete)
+    let child = ScanResult.fixture(path: "/u/Library/Caches/Brave/Default", sizeBytes: 90, category: .safeToDelete)
+
+    #expect(ScanSummary(results: [parent, child]).safeToDeleteBytes == 100)
+    #expect(SelectionSummary(items: [parent, child]).totalBytes == 100)
+    #expect(SelectionSummary(items: [parent, child]).itemCount == 2)
+  }
+
+  @Test func cleanupPlanTrashesOnlyOutermostAndDeselectsDescendants() {
+    let parent = ScanResult.fixture(path: "/u/Library/Caches/Brave", sizeBytes: 100, category: .safeToDelete)
+    let child = ScanResult.fixture(path: "/u/Library/Caches/Brave/Default", sizeBytes: 90, category: .safeToDelete)
+    let other = ScanResult.fixture(path: "/u/Library/Caches/Other", sizeBytes: 1, category: .safeToDelete)
+
+    let plan = ResultSelection.cleanupPlan(
+      reviewed: [parent], current: [parent, child, other],
+      selection: [parent.id, child.id, other.id])
+
+    #expect(plan.items == [parent])
+    #expect(plan.remainingSelection == [other.id])
   }
 }

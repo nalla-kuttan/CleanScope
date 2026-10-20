@@ -3,7 +3,8 @@ import SwiftUI
 
 struct CleanupReviewSheet: View {
   var items: [ScanResult]
-  var onConfirm: () -> Void
+  /// Receives exactly the items this sheet displayed.
+  var onConfirm: ([ScanResult]) -> Void
   @EnvironmentObject private var model: AppModel
   @Environment(\.dismiss) private var dismiss
   @State private var confirmsPermanent = false
@@ -14,95 +15,98 @@ struct CleanupReviewSheet: View {
     SelectionSummary(items: items)
   }
 
+  private var itemPhrase: String {
+    "\(CountPhrase.make(summary.itemCount, "item")) (\(ByteCount.string(summary.totalBytes)))"
+  }
+
+  private var confirmButtonTitle: String {
+    isPermanent
+      ? "Delete \(CountPhrase.make(summary.itemCount, "Item")) Permanently"
+      : "Move \(CountPhrase.make(summary.itemCount, "Item")) to Trash"
+  }
+
   var body: some View {
-    VStack(alignment: .leading, spacing: 18) {
-      HStack(spacing: 12) {
-        Image(systemName: "trash.circle.fill")
-          .font(.system(size: 34))
-          .foregroundStyle(BrandTheme.actionCoral)
-        VStack(alignment: .leading, spacing: 2) {
-          Text("Review cleanup")
-            .font(.title2.bold())
-          Text(isPermanent ? "Items are deleted immediately." : "Nothing is permanently deleted.")
-            .foregroundStyle(.secondary)
+    VStack(alignment: .leading, spacing: 16) {
+      HStack(alignment: .top, spacing: 12) {
+        Image(systemName: isPermanent ? "xmark.bin" : "trash")
+          .font(.system(size: 26))
+          .foregroundStyle(BrandTheme.destructive)
+          .frame(width: 36)
+          .accessibilityHidden(true)
+        VStack(alignment: .leading, spacing: 4) {
+          Text(isPermanent ? "Delete \(itemPhrase) permanently?" : "Move \(itemPhrase) to Trash?")
+            .font(.title3.weight(.semibold))
+            .foregroundStyle(BrandTheme.textPrimary)
+            .fixedSize(horizontal: false, vertical: true)
+          Text(
+            isPermanent
+              ? "These items are deleted immediately and can't be put back. Turn off permanent deletion in Settings to use the Trash."
+              : "Nothing is permanently deleted. You can put items back from the Trash until you empty it."
+          )
+          .foregroundStyle(BrandTheme.textSecondary)
+          .fixedSize(horizontal: false, vertical: true)
         }
       }
 
-      HStack(spacing: 12) {
-        StorageMetricView(
-          label: "Selected items",
-          value: "\(summary.itemCount)",
-          symbol: "checkmark.circle",
-          tint: BrandTheme.scopeForest
-        )
-        StorageMetricView(
-          label: "Potential space",
-          value: ByteCount.string(summary.totalBytes),
-          symbol: "internaldrive",
-          tint: BrandTheme.finderBlue
-        )
-      }
-
-      VStack(alignment: .leading, spacing: 8) {
-        Text("Selection")
-          .font(.headline)
+      VStack(alignment: .leading, spacing: 6) {
         ForEach(SafetyCategory.allCases, id: \.rawValue) { category in
           let count = summary.categoryCounts[category] ?? 0
           if count > 0 {
             HStack {
               SafetyLabel(category: category)
               Spacer()
-              Text("\(count)")
+              Text(count.formatted())
                 .monospacedDigit()
-                .foregroundStyle(.secondary)
+                .foregroundStyle(BrandTheme.textSecondary)
             }
           }
         }
       }
-      .padding(14)
-      .background(BrandTheme.secondarySurface)
-      .clipShape(RoundedRectangle(cornerRadius: BrandTheme.radius))
 
-      Label(
-        isPermanent
-          ? "CleanScope will delete allowed items permanently. Protected or manual-review items remain in place."
-          : "CleanScope will move allowed items to the macOS Trash. Protected or manual-review items remain in place.",
-        systemImage: "shield.checkered"
-      )
-      .font(.subheadline)
-      .foregroundStyle(.secondary)
-      .fixedSize(horizontal: false, vertical: true)
+      List(items) { item in
+        HStack {
+          Text(item.name)
+            .foregroundStyle(BrandTheme.textPrimary)
+            .lineLimit(1)
+            .help(item.path)
+          Spacer()
+          Text(ByteCount.string(item.sizeBytes))
+            .monospacedDigit()
+            .foregroundStyle(BrandTheme.textSecondary)
+        }
+      }
+      .listStyle(.bordered(alternatesRowBackgrounds: true))
+      .frame(height: min(CGFloat(items.count) * 24 + 8, 200))
+      .accessibilityLabel(isPermanent ? "Items to delete permanently" : "Items to move to Trash")
 
       HStack {
         Button("Cancel", role: .cancel) {
           dismiss()
         }
+        .keyboardShortcut(.cancelAction)
         Spacer()
         Button(role: .destructive) {
           if isPermanent {
             confirmsPermanent = true
           } else {
+            let reviewed = items
             dismiss()
-            onConfirm()
+            onConfirm(reviewed)
           }
         } label: {
-          Label(
-            isPermanent ? "Delete Permanently" : "Move Selected Items to Trash",
-            systemImage: isPermanent ? "xmark.bin" : "trash")
+          Text(confirmButtonTitle)
         }
-        .keyboardShortcut(.defaultAction)
+        .disabled(items.isEmpty)
       }
     }
-    .padding(24)
-    .frame(width: 540)
-    .alert(
-      "Delete \(summary.itemCount) item\(summary.itemCount == 1 ? "" : "s") (\(ByteCount.string(summary.totalBytes))) permanently?",
-      isPresented: $confirmsPermanent
-    ) {
+    .padding(20)
+    .frame(width: 500)
+    .alert("Delete \(itemPhrase) permanently?", isPresented: $confirmsPermanent) {
       Button("Cancel", role: .cancel) {}
       Button("Delete Permanently", role: .destructive) {
+        let reviewed = items
         dismiss()
-        onConfirm()
+        onConfirm(reviewed)
       }
     } message: {
       Text("This can't be undone.")

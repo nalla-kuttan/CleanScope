@@ -4,24 +4,40 @@ import SwiftUI
 @main
 struct CleanScopeApp: App {
   @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-  @StateObject private var model = AppModel()
+  @StateObject private var model = CleanScopeApp.makeModel()
   private let previewColorScheme: ColorScheme? =
     ProcessInfo.processInfo.arguments.contains("--dark-preview") ? .dark : nil
+
+  private static func makeModel() -> AppModel {
+    #if DEBUG
+      if DebugSnapshot.startsEmpty {
+        let scratch = FileManager.default.temporaryDirectory
+          .appendingPathComponent("CleanScopeSnapshot-\(UUID().uuidString)")
+        return AppModel(
+          repository: ScanRepository(fileURL: scratch.appendingPathComponent("latest.json")),
+          exclusionStore: ExclusionStore(fileURL: scratch.appendingPathComponent("exclusions.json")))
+      }
+    #endif
+    return AppModel()
+  }
 
   var body: some Scene {
     WindowGroup(id: "main") {
       ContentView()
         .environmentObject(model)
         .environmentObject(model.statusMonitor)
+        .tint(BrandTheme.accent)
         .preferredColorScheme(previewColorScheme)
-        .frame(minWidth: 1040, minHeight: 680)
+        .frame(minWidth: 820, minHeight: 560)
         .task { await model.applyLaunchArguments(ProcessInfo.processInfo.arguments) }
     }
     .commands {
-      CommandGroup(after: .appInfo) {
-        Button("Start Limited Scan") {
-          Task { await model.startScan(mode: .limited) }
+      SidebarCommands()
+      CommandGroup(after: .newItem) {
+        Button("Start Scan") {
+          Task { await model.startScan() }
         }
+        .disabled(model.isScanning)
         .keyboardShortcut("r", modifiers: [.command])
 
         Button("Cancel Scan") {
@@ -36,6 +52,7 @@ struct CleanScopeApp: App {
       SettingsView()
         .environmentObject(model)
         .environmentObject(model.statusMonitor)
+        .tint(BrandTheme.accent)
         .preferredColorScheme(previewColorScheme)
         .frame(width: 520, height: 620)
     }

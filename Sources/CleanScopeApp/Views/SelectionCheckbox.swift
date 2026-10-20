@@ -11,6 +11,8 @@ struct SelectionCheckbox: View {
   var state: State
   var isEnabled = true
   var accessibilityLabel: String
+  /// Shown as a tooltip and VoiceOver hint when the checkbox is disabled.
+  var unavailableReason: String? = nil
   var action: (_ usesRangeSelection: Bool) -> Void
 
   var body: some View {
@@ -18,15 +20,17 @@ struct SelectionCheckbox: View {
       action(NSApp.currentEvent?.modifierFlags.contains(.shift) == true)
     } label: {
       Image(systemName: symbol)
-        .font(.system(size: 14, weight: .semibold))
-        .foregroundStyle(isEnabled ? tint : Color.secondary)
-        .frame(width: 20, height: 20)
+        .font(.system(size: 15))
+        .foregroundStyle(isEnabled ? tint : BrandTheme.textSecondary.opacity(0.55))
+        .frame(width: 22, height: 22)
         .contentShape(Rectangle())
     }
-    .buttonStyle(.plain)
+    .buttonStyle(.borderless)
     .disabled(!isEnabled)
+    .help(isEnabled ? "" : (unavailableReason ?? ""))
     .accessibilityLabel(accessibilityLabel)
     .accessibilityValue(accessibilityValue)
+    .accessibilityHint(isEnabled ? "" : (unavailableReason ?? ""))
     .accessibilityAddTraits(state == .on ? .isSelected : [])
   }
 
@@ -39,7 +43,7 @@ struct SelectionCheckbox: View {
   }
 
   private var tint: Color {
-    state == .off ? .secondary : BrandTheme.scopeForest
+    state == .off ? BrandTheme.textSecondary : BrandTheme.accent
   }
 
   private var accessibilityValue: String {

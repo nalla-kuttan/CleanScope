@@ -1,181 +1,208 @@
+import AppKit
 import CleanScopeCore
 import SwiftUI
 
 struct DashboardView: View {
   @EnvironmentObject private var model: AppModel
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  @State private var selectedResult: ScanResult?
-  @State private var showsReview = false
-
-  private var cleanableBytes: Int64 {
-    ScanSummary(results: model.streamedResults).totalCleanableBytes
-  }
-
-  private var generatedCount: Int {
-    model.streamedResults.filter { $0.category == .safeToDelete }.count
-  }
-
-  private var reviewCount: Int {
-    model.streamedResults.filter {
-      $0.category == .probablyUnused || $0.category == .deleteIfAppUnused
-    }.count
-  }
+  @State private var detail: ScanResult?
+  @State private var review: ReviewRequest?
 
   private var quickWins: [ScanResult] {
     Array(
-      model.streamedResults
-        .filter { $0.category == .safeToDelete && $0.confidence == .high && !$0.isExcluded }
+      ResultPresentation.outermost(model.results(for: .readyToDelete))
         .sorted { $0.sizeBytes > $1.sizeBytes }
         .prefix(6)
     )
   }
 
   var body: some View {
+    let wins = quickWins
     ScrollView {
-      VStack(alignment: .leading, spacing: 20) {
+      VStack(alignment: .leading, spacing: 24) {
         header
 
         GrowthSummaryView(
-          cleanableBytes: cleanableBytes,
-          resultCount: model.streamedResults.count,
+          summary: model.summary,
+          safeCount: model.safeCount,
+          reviewCount: model.reviewCount,
+          disk: model.disk,
           isScanning: model.isScanning,
-          reduceMotion: reduceMotion
+          hasScanned: model.hasScanned
         )
-
-        HStack(spacing: 12) {
-          StorageMetricView(
-            label: "Available",
-            value: ByteCount.string(model.session?.diskAvailableBytes ?? 0),
-            symbol: "internaldrive",
-            tint: BrandTheme.finderBlue
-          )
-          StorageMetricView(
-            label: "Safe / generated",
-            value: "\(generatedCount)",
-            symbol: "leaf.fill",
-            tint: BrandTheme.moss
-          )
-          StorageMetricView(
-            label: "Needs review",
-            value: "\(reviewCount)",
-            symbol: "questionmark.circle",
-            tint: BrandTheme.amber
-          )
-        }
 
         MacStatusCard()
 
         SystemSpaceCard()
 
-        PermissionBannerView(summary: model.permissionSummary)
-
-        VStack(alignment: .leading, spacing: 10) {
-          HStack {
-            VStack(alignment: .leading, spacing: 2) {
-              Text("Quick Wins")
-                .font(.system(.title2, design: .rounded).bold())
-                .foregroundStyle(BrandTheme.bark)
-              Text("High-confidence items that can move safely to Trash.")
-                .font(.system(.subheadline, design: .rounded))
-                .foregroundStyle(BrandTheme.warmGray)
-            }
-            Spacer()
-            if !quickWins.isEmpty && !model.isScanning {
-              Button {
-                showsReview = true
-              } label: {
-                Label("Clean All Quick Wins", systemImage: "leaf.fill")
-                  .font(.system(.subheadline, design: .rounded).weight(.semibold))
-              }
-              .buttonStyle(.bordered)
-              .tint(BrandTheme.sage)
-            }
-            if model.isScanning {
-              ProgressView()
-                .controlSize(.small)
-                .help("Scanning")
-            }
-          }
-
-          if quickWins.isEmpty {
-            EmptyStateView(
-              title: model.isScanning ? "Looking for quick wins" : "No quick wins yet",
-              systemImage: model.isScanning ? "magnifyingglass" : "checkmark.seal",
-              message: model.isScanning
-                ? "Safe results will appear here as they are found."
-                : "Run a scan to find generated files and caches."
-            )
-            .frame(minHeight: 180)
-          } else {
-            ResultsTable(
-              results: quickWins,
-              selectedResult: $selectedResult,
-              showsBulkSelection: false
-            )
-            .frame(minHeight: 220)
-          }
+        if let permission = model.permissionSummary, !model.isScanning {
+          PermissionBannerView(summary: permission)
         }
+
+        quickWinsSection(wins)
       }
       .padding(24)
-      .frame(maxWidth: 1180, alignment: .leading)
+      .frame(maxWidth: 900, alignment: .leading)
+      .frame(maxWidth: .infinity)
     }
-    .background(BrandTheme.cream)
+    .navigationTitle("Dashboard")
     .task { await model.refreshSystemSpace() }
-    .sheet(item: $selectedResult) { result in
-      ItemDetailView(result: result)
+    .sheet(item: $detail) { result in
+      ItemDetailView(result: model.currentResult(for: result))
     }
-    .sheet(isPresented: $showsReview) {
-      CleanupReviewSheet(items: quickWins) {
-        Task {
-          model.setSelection(true, for: quickWins)
-          await model.cleanupSelected()
-        }
+    .sheet(item: $review) { request in
+      CleanupReviewSheet(items: request.items) { reviewed in
+        Task { await model.cleanup(reviewed) }
       }
     }
   }
 
   private var header: some View {
-    HStack(alignment: .center, spacing: 14) {
-      BrandMarkView(size: 50, field: true, isDecorative: true)
-      VStack(alignment: .leading, spacing: 3) {
-        Text("Your greenhouse is growing.")
-          .font(.system(size: 26, weight: .bold, design: .rounded))
-          .foregroundStyle(BrandTheme.bark)
-        Text(scanStatus)
-          .font(.system(.subheadline, design: .rounded))
-          .foregroundStyle(BrandTheme.warmGray)
-      }
-      Spacer()
+    VStack(alignment: .leading, spacing: 4) {
+      Text(
+        StoragePresentation.headline(
+          hasScanned: model.hasScanned, isScanning: model.isScanning,
+          safeBytes: model.summary.safeToDeleteBytes)
+      )
+      .font(.system(size: 26, weight: .bold))
+      .foregroundStyle(BrandTheme.textPrimary)
+      .accessibilityAddTraits(.isHeader)
 
-      if model.isScanning {
-        Button { model.cancelScan() } label: {
-          Label("Cancel", systemImage: "xmark.circle")
-            .font(.system(.subheadline, design: .rounded))
+      Text(subheadline)
+        .foregroundStyle(BrandTheme.textSecondary)
+    }
+  }
+
+  private var subheadline: String {
+    if model.isScanning {
+      return "\(CountPhrase.make(model.summary.totalResults, "item")) found so far."
+    }
+    guard model.hasScanned else {
+      return "CleanScope checks known cleanup locations. Nothing is removed until you review it."
+    }
+    if let line = StoragePresentation.reviewLine(count: model.reviewCount) { return line }
+    return StoragePresentation.reclaimCopy(bytes: model.summary.safeToDeleteBytes)
+  }
+
+  @ViewBuilder
+  private func quickWinsSection(_ wins: [ScanResult]) -> some View {
+    VStack(alignment: .leading, spacing: 10) {
+      HStack(alignment: .firstTextBaseline) {
+        VStack(alignment: .leading, spacing: 2) {
+          Text("Quick wins")
+            .font(.title3.weight(.semibold))
+            .foregroundStyle(BrandTheme.textPrimary)
+            .accessibilityAddTraits(.isHeader)
+          Text("The largest high-confidence caches. Each can move safely to Trash.")
+            .font(.callout)
+            .foregroundStyle(BrandTheme.textSecondary)
         }
+        Spacer()
+        if !wins.isEmpty && !model.isScanning {
+          Button("Review Quick Wins…") { review = ReviewRequest(items: wins) }
+            .buttonStyle(.borderedProminent)
+            .tint(BrandTheme.accent)
+        }
+      }
+
+      if wins.isEmpty {
+        quickWinsEmpty
+          .frame(minHeight: 200)
       } else {
-        Button {
-          Task {
-            await model.startScan(
-              mode: model.settings.scanDeveloperFolders ? .developer : .limited)
+        VStack(spacing: 0) {
+          ForEach(Array(wins.enumerated()), id: \.element.id) { index, result in
+            if index > 0 { Divider().padding(.leading, 44) }
+            QuickWinRow(result: result) { detail = result }
           }
-        } label: {
-          Label(model.session == nil ? "Start Scan" : "Rescan", systemImage: "leaf.fill")
-            .font(.system(.subheadline, design: .rounded).weight(.semibold))
         }
-        .buttonStyle(.borderedProminent)
-        .tint(BrandTheme.sage)
+        .background(
+          RoundedRectangle(cornerRadius: BrandTheme.radius, style: .continuous)
+            .fill(BrandTheme.surfaceRaised)
+        )
+
+        let total = model.counts[.readyToDelete] ?? 0
+        if total > wins.count {
+          Button("Show all \(CountPhrase.make(total, "item")) in Ready to Delete") {
+            model.destination = .readyToDelete
+          }
+          .buttonStyle(.link)
+        }
       }
     }
   }
 
-  private var scanStatus: String {
+  @ViewBuilder
+  private var quickWinsEmpty: some View {
     if model.isScanning {
-      return "\(model.streamedResults.count) results found so far"
+      EmptyStateView(
+        title: "Looking for quick wins",
+        systemImage: "magnifyingglass",
+        message: "Safe, high-confidence caches will appear here as they are found."
+      )
+    } else if model.hasScanned {
+      EmptyStateView(
+        title: "No quick wins this time",
+        systemImage: "leaf",
+        message: "No high-confidence caches turned up. Browse Large Files or Downloads to review items yourself."
+      )
+    } else {
+      EmptyStateView(
+        title: "No scan yet",
+        systemImage: "magnifyingglass",
+        message: "Run a scan to find caches and generated files your apps can rebuild.",
+        commandLabel: "Start Scan"
+      ) {
+        Task { await model.startScan() }
+      }
     }
-    guard let completedAt = model.session?.completedAt else {
-      return "Start with a careful scan of known cleanup locations."
+  }
+}
+
+struct ReviewRequest: Identifiable {
+  let id = UUID()
+  var items: [ScanResult]
+}
+
+private struct QuickWinRow: View {
+  var result: ScanResult
+  var onOpen: () -> Void
+  @State private var isHovered = false
+
+  var body: some View {
+    Button(action: onOpen) {
+      HStack(spacing: 12) {
+        Image(nsImage: FileIcon.image(for: result))
+          .resizable()
+          .frame(width: 22, height: 22)
+          .accessibilityHidden(true)
+        VStack(alignment: .leading, spacing: 1) {
+          Text(result.name)
+            .foregroundStyle(BrandTheme.textPrimary)
+            .lineLimit(1)
+          Text(result.path)
+            .font(.caption)
+            .foregroundStyle(BrandTheme.textSecondary)
+            .lineLimit(1)
+            .truncationMode(.middle)
+        }
+        Spacer(minLength: 12)
+        Text(ByteCount.string(result.sizeBytes))
+          .font(.system(.body, design: .rounded).weight(.semibold))
+          .monospacedDigit()
+          .foregroundStyle(BrandTheme.textPrimary)
+        Image(systemName: "chevron.right")
+          .font(.caption.weight(.semibold))
+          .foregroundStyle(BrandTheme.textSecondary)
+          .accessibilityHidden(true)
+      }
+      .padding(.horizontal, 12)
+      .padding(.vertical, 8)
+      .contentShape(Rectangle())
+      .background(isHovered ? BrandTheme.hairline.opacity(0.35) : .clear)
     }
-    return
-      "Last scan \(completedAt.formatted(date: .abbreviated, time: .shortened)) · \(model.streamedResults.count) results"
+    .buttonStyle(.plain)
+    .onHover { isHovered = $0 }
+    .help(result.path)
+    .accessibilityLabel("\(result.name), \(ByteCount.string(result.sizeBytes))")
+    .accessibilityHint("Shows details")
   }
 }

@@ -222,17 +222,18 @@ public struct ScanSummary: Codable, Equatable, Sendable {
 
   public init(results: [ScanResult] = []) {
     totalResults = results.count
-    safeToDeleteBytes = results.filter { $0.category == .safeToDelete }.map(\.sizeBytes).reduce(
-      0, +)
-    probablyUnusedBytes = results.filter { $0.category == .probablyUnused }.map(\.sizeBytes).reduce(
-      0, +)
-    deleteIfAppUnusedBytes = results.filter { $0.category == .deleteIfAppUnused }.map(\.sizeBytes)
+    // Nested folders are reported separately; count each byte once per category.
+    func bytes(_ include: (ScanResult) -> Bool) -> Int64 {
+      ResultPresentation.totalBytes(results.filter(include))
+    }
+    safeToDeleteBytes = bytes { $0.category == .safeToDelete }
+    probablyUnusedBytes = bytes { $0.category == .probablyUnused }
+    deleteIfAppUnusedBytes = bytes { $0.category == .deleteIfAppUnused }
+    doNotBulkDeleteBytes = bytes { $0.category == .doNotBulkDelete }
+    protectedBytes = bytes(\.isProtected)
+    syncedBytes = bytes(\.isSynced)
+    cloudOnlyBytes = ResultPresentation.outermost(results.filter(\.isCloudOnly)).map(\.cloudOnlyBytes)
       .reduce(0, +)
-    doNotBulkDeleteBytes = results.filter { $0.category == .doNotBulkDelete }.map(\.sizeBytes)
-      .reduce(0, +)
-    protectedBytes = results.filter(\.isProtected).map(\.sizeBytes).reduce(0, +)
-    syncedBytes = results.filter(\.isSynced).map(\.sizeBytes).reduce(0, +)
-    cloudOnlyBytes = results.filter(\.isCloudOnly).map(\.cloudOnlyBytes).reduce(0, +)
     totalCleanableBytes = safeToDeleteBytes + probablyUnusedBytes + deleteIfAppUnusedBytes
     largestItems = results.sorted { $0.sizeBytes > $1.sizeBytes }.prefix(10).map(\.id)
     largestHiddenFolders =

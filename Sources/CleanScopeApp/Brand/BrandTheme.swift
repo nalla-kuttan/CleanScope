@@ -1,77 +1,91 @@
 import AppKit
 import SwiftUI
 
+/// Greenhouse palette. Every text-role token meets WCAG AA (4.5:1) on both `surface` and
+/// `surfaceRaised` in light and dark appearances; see DESIGN.md for the measured ratios.
 enum BrandTheme {
-  static let radius: CGFloat = 14
-  static let motionDuration = 0.22
+  static let radius: CGFloat = 10
+  static let smallRadius: CGFloat = 7
+  static let motionDuration = 0.2
 
-  // — Greenhouse Palette (adaptive light / dark) —
-  static let sage = adaptive(light: 0x6B8F71, dark: 0x8FBC8F)          // Primary accent — muted botanical green
-  static let terracotta = adaptive(light: 0xC0675A, dark: 0xE8836F)    // Destructive / warning — warm red-orange
-  static let amber = adaptive(light: 0xC7963E, dark: 0xE0B05A)         // Attention — rich gold
-  static let cream = adaptive(light: 0xFAF7F2, dark: 0x1A1816)         // Window surface — warm off-white / warm dark
-  static let bark = adaptive(light: 0x2C2420, dark: 0xF2EDE8)          // Primary text — deep warm brown
-  static let clay = adaptive(light: 0xF0EAE2, dark: 0x252220)          // Card / secondary surface
-  static let moss = adaptive(light: 0x3D6B4A, dark: 0x5DA96A)          // Success — deep botanical green
-  static let warmGray = adaptive(light: 0x8C8580, dark: 0x7A7570)      // Secondary text
+  // Surfaces
+  static let surface = adaptive(light: 0xFAF7F2, dark: 0x1A1816)
+  static let surfaceRaised = adaptive(light: 0xF0EAE2, dark: 0x252220)
+  static let hairline = Color(nsColor: .separatorColor)
 
-  // Legacy aliases (keeps existing code compiling without mass renames)
-  static let scopeForest = sage
-  static let freshLeaf = moss
-  static let openMint = clay
-  static let sunToken = amber
-  static let actionCoral = terracotta
-  static let finderBlue = adaptive(light: 0x5A7FA6, dark: 0x7DA4CC)    // Muted steel-blue
-  static let deepInk = bark
-  static let clearPaper = cream
+  // Text
+  static let textPrimary = adaptive(light: 0x2C2420, dark: 0xF2EDE8)
+  static let textSecondary = adaptive(
+    light: 0x6B6561, dark: 0x918C87, increasedLight: 0x4A4440, increasedDark: 0xBDB7B1)
 
-  static let hairline = Color(nsColor: .separatorColor).opacity(0.45)
-  static let secondarySurface = clay
+  // Accent: `accent` fills controls that carry white labels; `accentText` is for text and icons.
+  static let accent = adaptive(
+    light: 0x526D56, dark: 0x4D814D, increasedLight: 0x3E5642, increasedDark: 0x3F6E3F)
+  static let accentText = adaptive(
+    light: 0x526D56, dark: 0x8FBC8F, increasedLight: 0x3E5642, increasedDark: 0xA9D1A9)
 
-  // Gradients
-  static let sageGradient = LinearGradient(
-    colors: [sage, moss],
-    startPoint: .topLeading,
-    endPoint: .bottomTrailing
-  )
+  // Semantic state colors, all usable as text.
+  static let safe = adaptive(
+    light: 0x3D6B4A, dark: 0x5DA96A, increasedLight: 0x2C5237, increasedDark: 0x7CC488)
+  static let review = adaptive(
+    light: 0x816025, dark: 0xE0B05A, increasedLight: 0x634917, increasedDark: 0xF0C878)
+  static let destructive = adaptive(
+    light: 0xA54C3F, dark: 0xE8836F, increasedLight: 0x863A2F, increasedDark: 0xF5A291)
+  static let info = adaptive(
+    light: 0x4B698A, dark: 0x7DA4CC, increasedLight: 0x37526F, increasedDark: 0x9DBEE0)
 
-  static let warmGradient = LinearGradient(
-    colors: [terracotta, amber],
-    startPoint: .topLeading,
-    endPoint: .bottomTrailing
-  )
-
-  static let softGradient = LinearGradient(
-    colors: [clay, cream],
-    startPoint: .topLeading,
-    endPoint: .bottomTrailing
-  )
-
-  // Legacy gradient aliases
-  static let sproutGradient = sageGradient
-  static let coralGradient = warmGradient
-  static let mintGradient = softGradient
-
-  static func triggerHaptic() {
-    #if os(macOS)
-    NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .default)
-    #endif
+  /// The Sprout Lens keeps its original colors so the in-app mark matches the app icon.
+  enum Mark {
+    static let lens = adaptive(light: 0x176F5D, dark: 0x63C6A7)
+    static let leaf = adaptive(light: 0x50B77A, dark: 0x71D198)
+    static let field = adaptive(light: 0xDFF2E8, dark: 0x173C33)
   }
 
-  private static func adaptive(light: UInt32, dark: UInt32) -> Color {
+  // TEMPORARY (removed in Task 2): old token names
+  // Gap-features views still use the pre-audit palette names. Each maps to its role token
+  // until Task 2 re-tokens those views and deletes this block; do not use these in new code.
+  static let cream = surface
+  static let clearPaper = surface
+  static let clay = surfaceRaised
+  static let openMint = surfaceRaised
+  static let secondarySurface = surfaceRaised
+  static let bark = textPrimary
+  static let deepInk = textPrimary
+  static let warmGray = textSecondary
+  static let sage = accent
+  static let scopeForest = accent
+  static let moss = safe
+  static let freshLeaf = safe
+  static let amber = review
+  static let sunToken = review
+  static let terracotta = destructive
+  static let actionCoral = destructive
+  static let finderBlue = info
+  // END TEMPORARY
+
+  static func animation(_ reduceMotion: Bool) -> Animation? {
+    reduceMotion ? nil : .easeOut(duration: motionDuration)
+  }
+
+  private static func adaptive(
+    light: UInt32, dark: UInt32, increasedLight: UInt32? = nil, increasedDark: UInt32? = nil
+  ) -> Color {
     Color(
       nsColor: NSColor(name: nil) { appearance in
-        let match = appearance.bestMatch(from: [
-          .darkAqua, .aqua, .accessibilityHighContrastDarkAqua,
-        ])
-        let isDark = match == .darkAqua || match == .accessibilityHighContrastDarkAqua
-        return nsColor(hex: isDark ? dark : light)
+        switch appearance.bestMatch(from: [
+          .aqua, .darkAqua, .accessibilityHighContrastAqua, .accessibilityHighContrastDarkAqua,
+        ]) {
+        case .darkAqua?: return srgb(dark)
+        case .accessibilityHighContrastAqua?: return srgb(increasedLight ?? light)
+        case .accessibilityHighContrastDarkAqua?: return srgb(increasedDark ?? dark)
+        default: return srgb(light)
+        }
       })
   }
 
-  private static func nsColor(hex: UInt32) -> NSColor {
+  private static func srgb(_ hex: UInt32) -> NSColor {
     NSColor(
-      calibratedRed: CGFloat((hex >> 16) & 0xFF) / 255,
+      srgbRed: CGFloat((hex >> 16) & 0xFF) / 255,
       green: CGFloat((hex >> 8) & 0xFF) / 255,
       blue: CGFloat(hex & 0xFF) / 255,
       alpha: 1

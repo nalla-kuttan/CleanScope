@@ -45,20 +45,38 @@ public struct ExclusionStore: Sendable {
     try save(rules)
   }
 
+  public func remove(id: String) throws {
+    try save(try load().filter { $0.id != id })
+  }
+
   public func isExcluded(path: String) throws -> Bool {
+    try load().contains { $0.matches(path: path) }
+  }
+}
+
+extension ExclusionRule {
+  public func matches(path: String) -> Bool {
     let normalized = URL(fileURLWithPath: path).standardizedFileURL.path
-    return try load().contains { rule in
-      let rulePath = URL(fileURLWithPath: rule.path).standardizedFileURL.path
-      switch rule.ruleType {
-      case .exactPath:
-        return normalized == rulePath
-      case .folderRecursive:
-        return normalized == rulePath || normalized.hasPrefix(rulePath + "/")
-      case .pattern:
-        return normalized.localizedCaseInsensitiveContains(rule.path)
-      case .category:
-        return false
-      }
+    let rulePath = URL(fileURLWithPath: self.path).standardizedFileURL.path
+    switch ruleType {
+    case .exactPath:
+      return normalized == rulePath
+    case .folderRecursive:
+      return normalized == rulePath || normalized.hasPrefix(rulePath + "/")
+    case .pattern:
+      return normalized.localizedCaseInsensitiveContains(self.path)
+    case .category:
+      return false
     }
+  }
+
+  /// Returns the result marked excluded and undeletable when any rule matches its path.
+  public static func applying(_ rules: [ExclusionRule], to result: ScanResult) -> ScanResult {
+    guard rules.contains(where: { $0.matches(path: result.normalizedPath) }) else { return result }
+    var excluded = result
+    excluded.isExcluded = true
+    excluded.canDelete = false
+    excluded.deletionMethod = .notAllowed
+    return excluded
   }
 }

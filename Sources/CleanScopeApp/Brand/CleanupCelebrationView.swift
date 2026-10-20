@@ -3,44 +3,40 @@ import SwiftUI
 
 struct CleanupCelebrationView: View {
   var recoveredBytes: Int64
-  var reduceMotion: Bool
+  var movedCount: Int
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var isVisible = false
 
   var body: some View {
-    HStack(spacing: 20) {
-      BrandMarkView(size: 64, field: true, isDecorative: true)
-        .scaleEffect(isVisible || reduceMotion ? 1 : 0.9)
+    HStack(spacing: 18) {
+      BrandMarkView(size: 56, field: true, isDecorative: true)
+        .scaleEffect(isVisible || reduceMotion ? 1 : 0.92)
         .opacity(isVisible ? 1 : 0)
 
-      VStack(alignment: .leading, spacing: 5) {
-        Text("Moved safely to Trash")
-          .font(.system(.title2, design: .rounded).bold())
-          .foregroundStyle(BrandTheme.bark)
-        Text(ByteCount.string(recoveredBytes))
-          .font(.system(size: 34, weight: .bold, design: .rounded))
-          .foregroundStyle(BrandTheme.sage)
-          .monospacedDigit()
-        Text("of breathing room recovered")
-          .font(.system(.subheadline, design: .rounded))
-          .foregroundStyle(BrandTheme.warmGray)
+      VStack(alignment: .leading, spacing: 4) {
+        Text(movedCount > 0 ? "Moved safely to Trash" : "Nothing was moved")
+          .font(.title3.weight(.semibold))
+          .foregroundStyle(BrandTheme.textPrimary)
+        if movedCount > 0 {
+          Text("You found \(ByteCount.string(recoveredBytes)) of breathing room.")
+            .font(.system(.title2, design: .rounded).weight(.bold))
+            .monospacedDigit()
+            .foregroundStyle(BrandTheme.accentText)
+        } else {
+          Text("Every item stayed in place. The details are below.")
+            .foregroundStyle(BrandTheme.textSecondary)
+        }
       }
       Spacer()
     }
     .padding(20)
     .background(
       RoundedRectangle(cornerRadius: BrandTheme.radius, style: .continuous)
-        .fill(BrandTheme.clay)
+        .fill(BrandTheme.surfaceRaised)
     )
-    .overlay(
-      RoundedRectangle(cornerRadius: BrandTheme.radius, style: .continuous)
-        .stroke(BrandTheme.sage.opacity(0.2))
-    )
+    .accessibilityElement(children: .combine)
     .onAppear {
-      BrandTheme.triggerHaptic()
-      if reduceMotion { isVisible = true }
-      else {
-        withAnimation(.easeOut(duration: BrandTheme.motionDuration)) { isVisible = true }
-      }
+      withAnimation(BrandTheme.animation(reduceMotion)) { isVisible = true }
     }
   }
 }

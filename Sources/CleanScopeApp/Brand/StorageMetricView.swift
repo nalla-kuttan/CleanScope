@@ -13,25 +13,27 @@ struct StorageMetricView: View {
         .foregroundStyle(tint)
         .frame(width: 32, height: 32)
         .background(tint.opacity(0.12))
-        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: BrandTheme.smallRadius, style: .continuous))
+        .accessibilityHidden(true)
 
       VStack(alignment: .leading, spacing: 2) {
         Text(label)
           .font(.caption)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(BrandTheme.textSecondary)
         Text(value)
           .font(.system(.title3, design: .rounded, weight: .bold))
-          .foregroundStyle(BrandTheme.deepInk)
+          .foregroundStyle(BrandTheme.textPrimary)
           .monospacedDigit()
       }
       Spacer(minLength: 4)
     }
     .padding(12)
-    .background(BrandTheme.secondarySurface)
+    .background(BrandTheme.surfaceRaised)
     .overlay(
-      RoundedRectangle(cornerRadius: BrandTheme.radius)
+      RoundedRectangle(cornerRadius: BrandTheme.radius, style: .continuous)
         .stroke(BrandTheme.hairline)
     )
-    .clipShape(RoundedRectangle(cornerRadius: BrandTheme.radius))
+    .clipShape(RoundedRectangle(cornerRadius: BrandTheme.radius, style: .continuous))
+    .accessibilityElement(children: .combine)
   }
 }

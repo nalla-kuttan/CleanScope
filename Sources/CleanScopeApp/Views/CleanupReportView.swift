@@ -3,91 +3,87 @@ import SwiftUI
 
 struct CleanupReportView: View {
   @EnvironmentObject private var model: AppModel
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   var body: some View {
     ScrollView {
-      VStack(alignment: .leading, spacing: 18) {
-        HStack {
-          VStack(alignment: .leading, spacing: 3) {
-            Text("Cleanup History")
-              .font(.system(size: 28, weight: .bold))
-              .foregroundStyle(BrandTheme.deepInk)
-            Text("A transparent record of what moved and what stayed.")
-              .foregroundStyle(.secondary)
-          }
-          Spacer()
-          Button {
-            Task {
-              await model.startScan(
-                mode: model.settings.scanDeveloperFolders ? .developer : .limited)
-            }
-          } label: {
-            Label("Rescan", systemImage: "arrow.clockwise")
-          }
-          .buttonStyle(.borderedProminent)
-          .tint(BrandTheme.scopeForest)
-          .disabled(model.isScanning)
-        }
-
+      VStack(alignment: .leading, spacing: 20) {
         if let cleanup = model.cleanupSession {
           CleanupCelebrationView(
             recoveredBytes: cleanup.recoveredBytes,
-            reduceMotion: reduceMotion
+            movedCount: cleanup.deletedItems.count
           )
 
           if let reminder = CleanupSummaryCopy.trashReminder(for: cleanup) {
             Label(reminder, systemImage: "trash")
               .font(.subheadline)
-              .foregroundStyle(.secondary)
+              .foregroundStyle(BrandTheme.textSecondary)
           }
 
-          HStack(spacing: 12) {
-            StorageMetricView(
-              label: "Available before",
-              value: ByteCount.string(cleanup.diskSpaceBeforeBytes),
-              symbol: "internaldrive",
-              tint: BrandTheme.finderBlue
-            )
-            StorageMetricView(
-              label: "Available after",
-              value: ByteCount.string(cleanup.diskSpaceAfterBytes ?? cleanup.diskSpaceBeforeBytes),
-              symbol: "checkmark.circle",
-              tint: BrandTheme.freshLeaf
-            )
-          }
+          availability(cleanup)
 
-          VStack(spacing: 10) {
+          VStack(spacing: 0) {
             reportSection(
-              "Removed", symbol: "trash.fill", tint: BrandTheme.freshLeaf,
+              "Removed", symbol: "trash.fill", tint: BrandTheme.safe,
               items: cleanup.deletedItems)
+            Divider()
             reportSection(
-              "Skipped", symbol: "forward.fill", tint: BrandTheme.sunToken,
+              "Skipped", symbol: "forward.fill", tint: BrandTheme.review,
               items: cleanup.skippedItems)
+            Divider()
             reportSection(
-              "Permission blocked", symbol: "lock.fill", tint: BrandTheme.finderBlue,
+              "Blocked by permissions", symbol: "lock.fill", tint: BrandTheme.info,
               items: cleanup.blockedItems)
+            Divider()
             reportSection(
-              "Failed", symbol: "xmark.octagon.fill", tint: BrandTheme.actionCoral,
+              "Failed", symbol: "xmark.octagon.fill", tint: BrandTheme.destructive,
               items: cleanup.failedItems)
           }
+          .background(
+            RoundedRectangle(cornerRadius: BrandTheme.radius, style: .continuous)
+              .fill(BrandTheme.surfaceRaised)
+          )
         } else {
           EmptyStateView(
-            title: "No cleanup report yet",
-            systemImage: "doc.text.magnifyingglass",
-            message: "After you review and move an item to Trash, the outcome will appear here.",
+            title: "No cleanup yet",
+            systemImage: "clock.arrow.circlepath",
+            message:
+              "After you review items and move them to Trash, this page shows what moved and what stayed.",
             usesBrandMark: true,
-            commandLabel: "Review Safe Cleanup"
+            commandLabel: "Browse Ready to Delete"
           ) {
-            model.destination = .safeCleanup
+            model.destination = .readyToDelete
           }
           .frame(minHeight: 420)
         }
       }
       .padding(24)
-      .frame(maxWidth: 980, alignment: .leading)
+      .frame(maxWidth: 900, alignment: .leading)
+      .frame(maxWidth: .infinity)
     }
-    .background(BrandTheme.clearPaper)
+    .navigationTitle("Last Cleanup")
+    .navigationSubtitle(
+      model.cleanupSession.map { $0.startedAt.formatted(date: .abbreviated, time: .shortened) } ?? "")
+  }
+
+  private func availability(_ cleanup: CleanupSession) -> some View {
+    HStack(spacing: 6) {
+      Image(systemName: "internaldrive")
+        .foregroundStyle(BrandTheme.textSecondary)
+        .accessibilityHidden(true)
+      Text("Available space")
+        .foregroundStyle(BrandTheme.textSecondary)
+      Text(ByteCount.string(cleanup.diskSpaceBeforeBytes))
+        .monospacedDigit()
+        .foregroundStyle(BrandTheme.textPrimary)
+      Image(systemName: "arrow.right")
+        .font(.caption)
+        .foregroundStyle(BrandTheme.textSecondary)
+        .accessibilityLabel("to")
+      Text(cleanup.diskSpaceAfterBytes.map(ByteCount.string) ?? "—")
+        .monospacedDigit()
+        .foregroundStyle(BrandTheme.textPrimary)
+    }
+    .accessibilityElement(children: .combine)
   }
 
   private func reportSection(
@@ -99,21 +95,26 @@ struct CleanupReportView: View {
     DisclosureGroup {
       if items.isEmpty {
         Text("None")
-          .foregroundStyle(.secondary)
+          .foregroundStyle(BrandTheme.textSecondary)
+          .frame(maxWidth: .infinity, alignment: .leading)
           .padding(.top, 6)
       } else {
         VStack(alignment: .leading, spacing: 8) {
           ForEach(items) { item in
             VStack(alignment: .leading, spacing: 2) {
               Text(item.path)
+                .foregroundStyle(BrandTheme.textPrimary)
                 .lineLimit(1)
+                .truncationMode(.middle)
                 .help(item.path)
+                .textSelection(.enabled)
               Text(item.message)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(BrandTheme.textSecondary)
             }
           }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, 8)
       }
     } label: {
@@ -121,13 +122,11 @@ struct CleanupReportView: View {
         Label(title, systemImage: symbol)
           .foregroundStyle(tint)
         Spacer()
-        Text("\(items.count)")
+        Text(items.count.formatted())
           .monospacedDigit()
-          .foregroundStyle(.secondary)
+          .foregroundStyle(BrandTheme.textSecondary)
       }
     }
     .padding(12)
-    .background(BrandTheme.secondarySurface)
-    .clipShape(RoundedRectangle(cornerRadius: BrandTheme.radius))
   }
 }
