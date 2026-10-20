@@ -7,6 +7,8 @@
   /// visits every destination, writes a PNG of the window for each, and quits. Add
   /// `--snapshot-empty` to start without the saved scan. Add `--snapshot-scan-progress <0…1>`
   /// to capture a simulated mid-scan state built from the saved scan. It never scans or cleans.
+  /// `--snapshot-scan-cancelled` makes that scan a cancelled one. `--snapshot-collapse` also
+  /// collapses a few selected Storage Map tiles as if they were trashed, without touching files.
   /// `--map-fixture <N>` swaps in a synthetic N-item tree; `--map-benchmark` then times the map.
   @MainActor
   enum DebugSnapshot {
@@ -34,6 +36,14 @@
       return min(max(value, 0), 1)
     }
 
+    static var simulatesCancelledScan: Bool {
+      ProcessInfo.processInfo.arguments.contains("--snapshot-scan-cancelled")
+    }
+
+    static var simulatesCollapse: Bool {
+      ProcessInfo.processInfo.arguments.contains("--snapshot-collapse")
+    }
+
     static func run(model: AppModel) async {
       if let count = MapFixture.requestedCount {
         let fixture = MapFixture.make(count: count)
@@ -51,7 +61,9 @@
         ProcessInfo.processInfo.arguments.contains("--dark-preview") ? "dark" : "light"
       let prefix = startsEmpty ? "empty-" : ""
       try? await Task.sleep(nanoseconds: 1_500_000_000)
-      if let progress = simulatedScanProgress { model.debugSimulateScan(progress: progress) }
+      if let progress = simulatedScanProgress {
+        model.debugSimulateScan(progress: progress, cancelled: simulatesCancelledScan)
+      }
       NSApp.windows.first(where: \.isVisible)?.setContentSize(NSSize(width: 1180, height: 760))
 
       captureSidebar(directory.appendingPathComponent("\(prefix)sidebar-\(appearance).png"))
@@ -60,6 +72,17 @@
         model.destination = destination
         try? await Task.sleep(nanoseconds: 900_000_000)
         capture(directory.appendingPathComponent("\(prefix)\(destination.rawValue)-\(appearance).png"))
+      }
+
+      if simulatesCollapse {
+        let trashed = Set(model.selectedResults().prefix(4).map(\.id))
+        model.destination = .storageMap
+        try? await Task.sleep(nanoseconds: 900_000_000)
+        model.debugCollapseRequest = trashed
+        try? await Task.sleep(nanoseconds: 350_000_000)
+        capture(directory.appendingPathComponent("\(prefix)collapse-mid-\(appearance).png"))
+        try? await Task.sleep(nanoseconds: 1_200_000_000)
+        capture(directory.appendingPathComponent("\(prefix)collapse-after-\(appearance).png"))
       }
 
       if !startsEmpty, let item = model.results(for: .readyToDelete).first {

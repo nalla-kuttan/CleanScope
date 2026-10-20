@@ -11,6 +11,10 @@ final class StorageMapCache {
     var nodeBytes: Int64
     var results: [ScanResult]
     var freeBytes: Int64
+    /// Results trashed since the scan, whose tiles are left out, and the tile ids still
+    /// collapsing, which stay until their animation ends.
+    var trashedIDs: Set<String> = []
+    var collapsingIDs: Set<String> = []
   }
 
   private var key: Key?
@@ -61,6 +65,10 @@ struct StorageMapArea: View {
   var cache: StorageMapCache
   @Binding var focusedID: String?
   var onOpen: (StorageMapView.Tile) -> Void
+  /// 1 when the scan is done or stopped, else the scan's progress.
+  var revealFraction: Double = 1
+  var collapsing: Set<String> = []
+  var collapseProgress: Double = 0
 
   @State private var hoveredID: String?
 
@@ -78,7 +86,10 @@ struct StorageMapArea: View {
           focusedID: $focusedID,
           onToggle: toggle,
           onDrill: drill,
-          onHover: { hoveredID = $0 }
+          onHover: { hoveredID = $0 },
+          revealFraction: revealFraction,
+          collapsing: collapsing,
+          collapseProgress: collapseProgress
         )
         .contextMenu { if let target { tileMenu(target) } }
         .help(target.map(tooltip) ?? "")

@@ -24,6 +24,17 @@ final class MotionPolicy: ObservableObject {
     #endif
   }
 
+  /// A snapshot run is launched from a shell: its window never becomes active and may not report
+  /// itself visible, which would pause ambient motion in every capture. Debug builds treat the
+  /// window as visible and the app as active.
+  private static var isSnapshotRun: Bool {
+    #if DEBUG
+      DebugSnapshot.isActive
+    #else
+      false
+    #endif
+  }
+
   init() {
     decision = MotionDecision(
       reduceMotion: true, lowPower: false, windowVisible: true, appActive: true)
@@ -77,8 +88,8 @@ final class MotionPolicy: ObservableObject {
       reduceMotion: Self.forcesReduceMotion
         || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
       lowPower: ProcessInfo.processInfo.isLowPowerModeEnabled,
-      windowVisible: windowVisible,
-      appActive: appActive)
+      windowVisible: windowVisible || Self.isSnapshotRun,
+      appActive: appActive || Self.isSnapshotRun)
     if next != decision { decision = next }
   }
 }

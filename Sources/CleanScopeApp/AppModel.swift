@@ -227,6 +227,9 @@ final class AppModel: ObservableObject {
   /// Fraction of top-level scan items finished: 0 at scan start, 1 once a scan completes. A
   /// cancelled scan leaves it where it stopped.
   @Published private(set) var scanProgress: Double = 0
+  /// Ids of results the app has moved to the Trash or deleted since the current scan began. The
+  /// Storage Map leaves their tiles out, as the scan's tree itself is not rewritten.
+  @Published private(set) var trashedResultIDs: Set<String> = []
   /// Category of the last result in the most recently flushed batch; nil until one arrives.
   @Published private(set) var latestStreamedCategory: SafetyCategory?
   @Published var permissionSummary: PermissionSummary?
@@ -240,6 +243,8 @@ final class AppModel: ObservableObject {
   #if DEBUG
     /// Lets `DebugSnapshot` open an item's detail sheet.
     @Published var debugDetail: ScanResult?
+    /// Result ids `DebugSnapshot` asks the Storage Map to collapse, as if they were just trashed.
+    @Published var debugCollapseRequest: Set<String>?
   #endif
 
   /// Derived once per results change instead of on every view render.
@@ -600,6 +605,7 @@ final class AppModel: ObservableObject {
     let scanSettings = scanSettings ?? settings
     isScanning = true
     scanProgress = 0
+    trashedResultIDs = []
     latestStreamedCategory = nil
     streamedResults = []
     pendingResults = []
@@ -697,19 +703,27 @@ final class AppModel: ObservableObject {
   #if DEBUG
     /// Puts the model into a mid-scan state from the saved scan without scanning anything:
     /// the first `progress` fraction of its results are streamed in.
-    func debugSimulateScan(progress: Double) {
+    /// With `cancelled`, the scan has stopped where it was: not scanning, progress left in place.
+    func debugSimulateScan(progress: Double, cancelled: Bool = false) {
       let fraction = min(max(progress, 0), 1)
       let all = session?.results ?? []
       let shown = Array(all.prefix(Int((Double(all.count) * fraction).rounded(.down))))
-      isScanning = true
+      isScanning = !cancelled
       scanProgress = fraction
       streamedResults = shown.map { ExclusionRule.applying(exclusions, to: $0) }
       latestStreamedCategory = shown.last?.category
     }
 
+    /// Marks results as trashed without touching the file system, for the map's collapse check.
+    func debugMarkTrashed(_ ids: Set<String>) {
+      trashedResultIDs.formUnion(ids)
+      selection.subtract(ids)
+    }
+
     /// Replaces the session with a synthetic one for Storage Map checks (`--map-fixture`).
     func debugLoadMapFixture(_ fixture: ScanSession, selection fixtureSelection: Set<String>) {
       session = fixture
+      trashedResultIDs = []
       streamedResults = fixture.results
       selection = fixtureSelection
     }
@@ -777,7 +791,11 @@ final class AppModel: ObservableObject {
   /// Removes exactly `items`, re-validated against the current results. Every destructive
   /// path in the app goes through `CleanupReviewSheet` before calling this. `method` defaults
   /// to the user's setting (Trash, or permanent deletion when "Delete immediately" is on).
-  func cleanup(_ items: [ScanResult], method: DeletionMethod? = nil) async {
+  /// The Storage Map passes `navigatesToReport: false` to play its collapse first, then opens
+  /// the report itself.
+  func cleanup(
+    _ items: [ScanResult], method: DeletionMethod? = nil, navigatesToReport: Bool = true
+  ) async {
     let plan = ResultSelection.cleanupPlan(
       reviewed: items, current: streamedResults, selection: selection)
     guard !plan.items.isEmpty else { return }
@@ -794,8 +812,11 @@ final class AppModel: ObservableObject {
       cleanupLog = (try? cleanupLogStore.load()) ?? cleanupLog
     }
     selection = plan.remainingSelection
+    if let session = cleanupSession {
+      trashedResultIDs.formUnion(session.deletedItems.map(\.scanResultId))
+    }
     refreshDisk()
-    destination = .lastCleanup
+    if navigatesToReport { destination = .lastCleanup }
   }
 
   var cleanupMethod: DeletionMethod {

@@ -61,6 +61,9 @@ struct LensOverlay: View, Animatable {
   var tiles: [MapTile] = []
   var selection: Set<String> = []
   var colors = MapColors(isDark: false, isIncreased: false)
+  var revealX: CGFloat = .infinity
+  var collapsing: Set<String> = []
+  var collapseProgress: Double = 0
 
   var animatableData: AnimatablePair<CGFloat, CGFloat> {
     get { AnimatablePair(center.x, center.y) }
@@ -101,7 +104,8 @@ struct LensOverlay: View, Animatable {
     ZStack(alignment: .topLeading) {
       colors.color(BrandPalette.surface)
       MapTileLayer(
-        tiles: visibleTiles, selection: selection, colors: colors, transform: transform)
+        tiles: visibleTiles, selection: selection, colors: colors, revealX: revealX,
+        collapsing: collapsing, collapseProgress: collapseProgress, transform: transform)
     }
     .frame(width: radius * 2, height: radius * 2)
     .modifier(LensGlass(radius: radius, zoom: zoom))

@@ -6,6 +6,10 @@ import SwiftUI
 /// order, Space toggles selection, Return drills in. VoiceOver sees one button per tile.
 /// The Sprout Lens magnifies the tile under the pointer, else the focused tile, else it rests on
 /// the largest selectable tile.
+///
+/// While a scan runs, `revealFraction` (the scan's progress) draws tiles right of that fraction of
+/// the width as outlines, with a light band at the edge. Tiles in `collapsing` shrink away as
+/// `collapseProgress` runs from 0 to 1.
 struct MapCanvas: View {
   var tiles: [MapTile]
   /// Ids of the tiles that are selected.
@@ -15,6 +19,11 @@ struct MapCanvas: View {
   var onDrill: (String) -> Void
   /// Reports the tile under the pointer, for the parent's details bar and context menu.
   var onHover: (String?) -> Void = { _ in }
+  /// How much of the width the scan has revealed: 1 once the scan has finished or stopped.
+  var revealFraction: Double = 1
+  /// Ids of tiles shrinking away after a cleanup, and how far (0…1) they have gone.
+  var collapsing: Set<String> = []
+  var collapseProgress: Double = 0
 
   @State private var hoveredID: String?
   @State private var pointer: CGPoint?
@@ -29,14 +38,21 @@ struct MapCanvas: View {
 
   var body: some View {
     ZStack(alignment: .topLeading) {
-      MapTileLayer(
-        tiles: tiles, selection: selection, colors: colors,
-        onActivate: { tile in
-          if tile.isSelectable { onToggle(tile.id) } else { onDrill(tile.id) }
-        },
-        onOpen: { onDrill($0.id) }
-      )
-      .equatable()
+      GeometryReader { proxy in
+        MapTileLayer(
+          tiles: tiles, selection: selection, colors: colors,
+          revealX: revealX(in: proxy.size.width), collapsing: collapsing,
+          collapseProgress: collapseProgress,
+          onActivate: { tile in
+            if tile.isSelectable { onToggle(tile.id) } else { onDrill(tile.id) }
+          },
+          onOpen: { onDrill($0.id) }
+        )
+        .equatable()
+      }
+      sweepBand
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
       highlights
         .allowsHitTesting(false)
         .accessibilityHidden(true)
@@ -74,6 +90,39 @@ struct MapCanvas: View {
       if let hoveredID, !tiles.contains(where: { $0.id == hoveredID }) { setHovered(nil) }
     }
   }
+
+  // MARK: - Scan sweep
+
+  private var isSweeping: Bool { revealFraction < 1 }
+
+  private func revealX(in width: CGFloat) -> CGFloat {
+    isSweeping ? CGFloat(min(max(revealFraction, 0), 1)) * width : .infinity
+  }
+
+  /// A light band behind the reveal edge, drawn only while the scan runs and ambient motion is
+  /// allowed. Reduce Motion still gets the outlines, without the band.
+  @ViewBuilder
+  private var sweepBand: some View {
+    if isSweeping, motion.allowsAmbientMotion {
+      GeometryReader { proxy in
+        let edge = revealX(in: proxy.size.width)
+        LinearGradient(
+          colors: [
+            colors.color(BrandPalette.accentText).opacity(0),
+            colors.color(BrandPalette.accentText).opacity(0.35),
+          ],
+          startPoint: .leading, endPoint: .trailing
+        )
+        .frame(width: Self.bandWidth)
+        .frame(maxHeight: .infinity)
+        .offset(x: edge - Self.bandWidth)
+        .animation(motion.animation(.linear(duration: 0.4)), value: edge)
+      }
+      .clipped()
+    }
+  }
+
+  static let bandWidth: CGFloat = 90
 
   // MARK: - Hover and focus
 
@@ -124,7 +173,9 @@ struct MapCanvas: View {
       let center = LensGeometry.clamp(target, radius: radius, in: size)
       LensOverlay(
         center: center, radius: radius, zoom: LensGeometry.zoom, tile: tile(at: center),
-        tiles: tiles, selection: selection, colors: colors
+        tiles: tiles, selection: selection, colors: colors,
+        revealX: revealX(in: size.width), collapsing: collapsing,
+        collapseProgress: collapseProgress
       )
       .animation(motion.animation(.easeOut(duration: 0.12)), value: center)
     }

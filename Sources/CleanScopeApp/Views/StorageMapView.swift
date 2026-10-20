@@ -9,6 +9,11 @@ struct StorageMapView: View {
   @State private var focusedID: String?
   @State private var cache = StorageMapCache()
   @State private var showsList = false
+  @State private var review: ReviewRequest?
+  /// Tiles shrinking away after a cleanup, and how far (0…1) they have gone.
+  @State private var collapsingIDs: Set<String> = []
+  @State private var collapseProgress = 0.0
+  @EnvironmentObject private var motion: MotionPolicy
 
   private let classifier = ClassificationService()
 
@@ -58,7 +63,104 @@ struct StorageMapView: View {
     .padding(24)
     .background(BrandTheme.surface)
     .onChange(of: model.session?.id) { trail = [] }
+    .toolbar {
+      ToolbarItem(placement: .primaryAction) {
+        let selected = model.selectedResults()
+        Button {
+          review = ReviewRequest(items: selected)
+        } label: {
+          Label("Review Cleanup…", systemImage: "checklist")
+        }
+        .disabled(selected.isEmpty || model.isScanning)
+        .help(reviewHelp(selected))
+      }
+    }
+    .sheet(item: $review) { request in
+      CleanupReviewSheet(items: request.items) { reviewed in
+        Task { await cleanUp(reviewed) }
+      }
+    }
+    #if DEBUG
+      .onReceive(model.$debugCollapseRequest) { request in
+        guard let request else { return }
+        model.debugCollapseRequest = nil
+        Task { await debugCollapse(request) }
+      }
+    #endif
   }
+
+  private func reviewHelp(_ selected: [ScanResult]) -> String {
+    if model.isScanning { return "Review cleanup once the scan finishes" }
+    if selected.isEmpty { return "Select items to review them for cleanup" }
+    let count = CountPhrase.make(selected.count, "selected item")
+    return model.settings.deleteImmediately
+      ? "Review \(count) before deleting them permanently"
+      : "Review \(count) before moving them to Trash"
+  }
+
+  // MARK: - Scan sweep and collapse
+
+  /// The share of the map the scan has measured: its progress while scanning, else everything
+  /// (a cancelled scan keeps all the tiles it found).
+  private var revealFraction: Double { model.isScanning ? model.scanProgress : 1 }
+
+  /// Ids of the tiles in the current folder that stand for `resultIDs`.
+  private func tileIDs(forResults resultIDs: Set<String>) -> [String: String] {
+    guard let current else { return [:] }
+    var map: [String: String] = [:]
+    for tile in makeTiles(for: current) {
+      if let id = tile.result?.id, resultIDs.contains(id) { map[id] = tile.id }
+    }
+    return map
+  }
+
+  /// Cleans up exactly the reviewed items, shrinks the tiles that were trashed, then opens the
+  /// report. Reduce Motion skips the shrinking.
+  private func cleanUp(_ reviewed: [ScanResult]) async {
+    let tileForResult = tileIDs(forResults: Set(reviewed.map(\.id)))
+    // Hold the tiles in place while the cleanup runs, so none vanishes before its animation.
+    collapsingIDs = Set(tileForResult.values)
+    let previous = model.cleanupSession?.id
+    await model.cleanup(reviewed, navigatesToReport: false)
+    guard model.cleanupSession?.id != previous else {
+      collapsingIDs = []
+      return
+    }
+    let deleted = Set(model.cleanupSession?.deletedItems.map(\.scanResultId) ?? [])
+    collapsingIDs = Set(tileForResult.filter { deleted.contains($0.key) }.map(\.value))
+    let played = await collapse()
+    if played { try? await Task.sleep(nanoseconds: 500_000_000) }
+    if model.destination == .storageMap { model.destination = .lastCleanup }
+  }
+
+  /// Shrinks `collapsingIDs` over `collapseDuration`, then drops them so the layout settles.
+  /// Returns whether it animated.
+  @discardableResult
+  private func collapse() async -> Bool {
+    let animates = motion.allowsTransitions && !collapsingIDs.isEmpty
+    if animates {
+      let start = Date()
+      while true {
+        let elapsed = Date().timeIntervalSince(start)
+        collapseProgress = MapTileStyle.collapseProgress(after: elapsed)
+        if elapsed >= MapTileStyle.collapseDuration { break }
+        try? await Task.sleep(nanoseconds: 16_000_000)
+      }
+    }
+    collapsingIDs = []
+    collapseProgress = 0
+    return animates
+  }
+
+  #if DEBUG
+    /// `--snapshot-collapse`: collapses the tiles for `resultIDs` as if they were just trashed,
+    /// without touching the file system.
+    private func debugCollapse(_ resultIDs: Set<String>) async {
+      collapsingIDs = Set(tileIDs(forResults: resultIDs).values)
+      model.debugMarkTrashed(resultIDs)
+      await collapse()
+    }
+  #endif
 
   // MARK: - Header
 
@@ -139,7 +241,8 @@ struct StorageMapView: View {
     let freeBytes = showsFree ? (model.disk?.availableBytes ?? 0) : 0
     let key = StorageMapCache.Key(
       sessionID: model.session?.id, nodeID: node.id, nodeBytes: node.sizeBytes,
-      results: model.streamedResults, freeBytes: freeBytes)
+      results: model.streamedResults, freeBytes: freeBytes,
+      trashedIDs: model.trashedResultIDs, collapsingIDs: collapsingIDs)
     return cache.tiles(for: key) {
       buildTiles(for: node, showsFree: showsFree, freeBytes: freeBytes)
     }
@@ -159,6 +262,12 @@ struct StorageMapView: View {
         return Tile(node: free, result: nil, category: .safeToDelete, tone: .free)
       }
       guard let child = children[item.id] else { return nil }
+      // A trashed item's tile stays only while it shrinks away.
+      if let resultId = child.resultId, model.trashedResultIDs.contains(resultId),
+        !collapsingIDs.contains(child.id)
+      {
+        return nil
+      }
       let result = child.resultId.flatMap { byID[$0] }
       let category =
         result?.category
@@ -177,7 +286,9 @@ struct StorageMapView: View {
   private func treemap(_ tiles: [Tile]) -> some View {
     StorageMapArea(
       tiles: tiles, cache: cache, focusedID: $focusedID,
-      onOpen: { navigate(to: trail + [$0.node.path]) })
+      onOpen: { navigate(to: trail + [$0.node.path]) },
+      revealFraction: revealFraction, collapsing: collapsingIDs,
+      collapseProgress: collapseProgress)
   }
 
   private func tileList(_ tiles: [Tile]) -> some View {

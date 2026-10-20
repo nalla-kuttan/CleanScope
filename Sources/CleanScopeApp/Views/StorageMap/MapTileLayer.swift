@@ -27,6 +27,29 @@ enum MapTileStyle {
     return selected ? inset.offsetBy(dx: 0, dy: -lift) : inset
   }
 
+  /// How long trashed tiles take to shrink away.
+  static let collapseDuration: TimeInterval = 0.7
+
+  /// The collapse's progress (0…1) `elapsed` seconds in: an ease in and out.
+  static func collapseProgress(after elapsed: TimeInterval) -> Double {
+    let t = min(max(elapsed / collapseDuration, 0), 1)
+    return t * t * (3 - 2 * t)
+  }
+
+  /// How much of a collapsing tile is left at `progress` (0…1): it shrinks to nothing.
+  static func collapseScale(at progress: Double) -> CGFloat {
+    CGFloat(1 - min(max(progress, 0), 1))
+  }
+
+  /// `rect` shrunk about its centre to the collapse scale at `progress`.
+  static func collapsed(_ rect: CGRect, at progress: Double) -> CGRect {
+    let scale = collapseScale(at: progress)
+    let size = CGSize(width: rect.width * scale, height: rect.height * scale)
+    return CGRect(
+      x: rect.midX - size.width / 2, y: rect.midY - size.height / 2,
+      width: size.width, height: size.height)
+  }
+
   static func path(for frame: CGRect) -> Path {
     let radius = min(cornerRadius, min(frame.width, frame.height) / 2)
     return Path(roundedRect: frame, cornerRadius: radius, style: .continuous)
@@ -80,6 +103,12 @@ struct MapTileLayer: View, Equatable {
   let tiles: [MapTile]
   let selection: Set<String>
   let colors: MapColors
+  /// Tiles whose centre lies right of this x draw as outlines, not yet measured by the scan.
+  /// Infinite once every tile is in.
+  var revealX: CGFloat = .infinity
+  /// Tiles shrinking away after a cleanup, and how far (0…1) they have gone.
+  var collapsing: Set<String> = []
+  var collapseProgress: Double = 0
   /// Maps tile coordinates into the canvas. The lens passes a magnifying transform.
   var transform: CGAffineTransform = .identity
   /// VoiceOver's action for a tile. Not compared: it only forwards to the parent's handlers.
@@ -89,7 +118,10 @@ struct MapTileLayer: View, Equatable {
 
   static func == (lhs: MapTileLayer, rhs: MapTileLayer) -> Bool {
     lhs.colors == rhs.colors && lhs.transform == rhs.transform
-      && lhs.selection == rhs.selection && lhs.tiles == rhs.tiles
+      && lhs.selection == rhs.selection && lhs.revealX == rhs.revealX
+      && lhs.collapsing == rhs.collapsing
+      && (lhs.collapsing.isEmpty || lhs.collapseProgress == rhs.collapseProgress)
+      && lhs.tiles == rhs.tiles
   }
 
   var body: some View {
@@ -123,27 +155,62 @@ struct MapTileLayer: View, Equatable {
     return parts.joined(separator: ", ")
   }
 
+  /// A tile as drawn: where it sits, and whether the scan has reached it yet.
+  private struct Placed {
+    var tile: MapTile
+    var rect: CGRect
+    var isSelected: Bool
+    var isOutline: Bool
+  }
+
+  private func placements() -> [Placed] {
+    tiles.compactMap { tile in
+      var rect = tile.rect
+      if collapsing.contains(tile.id) { rect = MapTileStyle.collapsed(rect, at: collapseProgress) }
+      guard rect.width > 0, rect.height > 0 else { return nil }
+      let isOutline = tile.rect.midX > revealX
+      let isSelected = !isOutline && selection.contains(tile.id)
+      return Placed(
+        tile: tile, rect: rect, isSelected: isSelected, isOutline: isOutline)
+    }
+  }
+
+  private func frame(of placed: Placed) -> CGRect {
+    let inset = placed.rect.insetBy(dx: MapTileStyle.gap / 2, dy: MapTileStyle.gap / 2)
+    return placed.isSelected ? inset.offsetBy(dx: 0, dy: -MapTileStyle.lift) : inset
+  }
+
   private func draw(in context: inout GraphicsContext) {
     let tones: [MapTone] = SafetyCategory.allCases.map { .category($0) } + [.unclassified, .free]
     var resting: [MapTone: Path] = [:]
     var lifted: [MapTone: Path] = [:]
-    var raised: [MapTile] = []
+    var outlined: [MapTone: Path] = [:]
+    var raised: [CGRect] = []
+    let placed = placements()
 
-    for tile in tiles {
-      let isSelected = selection.contains(tile.id)
-      let frame = MapTileStyle.frame(of: tile, selected: isSelected)
+    for item in placed {
+      let frame = frame(of: item)
       guard frame.width > 0, frame.height > 0 else { continue }
-      if isSelected {
-        lifted[tile.tone, default: Path()].addPath(MapTileStyle.path(for: frame))
-        raised.append(tile)
+      let path = MapTileStyle.path(for: frame)
+      if item.isOutline {
+        outlined[item.tile.tone, default: Path()].addPath(path)
+      } else if item.isSelected {
+        lifted[item.tile.tone, default: Path()].addPath(path)
+        raised.append(frame)
       } else {
-        resting[tile.tone, default: Path()].addPath(MapTileStyle.path(for: frame))
+        resting[item.tile.tone, default: Path()].addPath(path)
       }
     }
 
     // One fill per tone keeps thousands of tiles to a handful of draw calls.
     for tone in tones {
       if let path = resting[tone] { context.fill(path, with: shading(for: tone)) }
+    }
+    // Tiles the scan has not reached yet show only their outline, in their own colour.
+    for tone in tones {
+      if let path = outlined[tone] {
+        context.stroke(path, with: shading(for: tone), style: StrokeStyle(lineWidth: 1.25))
+      }
     }
 
     if !raised.isEmpty {
@@ -155,20 +222,17 @@ struct MapTileLayer: View, Equatable {
         }
       }
       var outlines = Path()
-      for tile in raised {
-        outlines.addPath(MapTileStyle.path(for: MapTileStyle.frame(of: tile, selected: true)))
-      }
+      for frame in raised { outlines.addPath(MapTileStyle.path(for: frame)) }
       context.stroke(outlines, with: .color(colors.color(BrandPalette.accentText)), lineWidth: 1.5)
     }
 
-    for tile in tiles {
-      let isSelected = selection.contains(tile.id)
-      let frame = MapTileStyle.frame(of: tile, selected: isSelected)
-      let hasBadge = isSelected && frame.width >= 30 && frame.height >= 24
-      if tile.rect.width >= MapTileStyle.labelMinimum.width,
-        tile.rect.height >= MapTileStyle.labelMinimum.height
+    for item in placed where !item.isOutline {
+      let frame = frame(of: item)
+      let hasBadge = item.isSelected && frame.width >= 30 && frame.height >= 24
+      if item.rect.width >= MapTileStyle.labelMinimum.width,
+        item.rect.height >= MapTileStyle.labelMinimum.height
       {
-        drawLabel(tile, in: frame, leavingRoomForBadge: hasBadge, context: &context)
+        drawLabel(item.tile, in: frame, leavingRoomForBadge: hasBadge, context: &context)
       }
       if hasBadge { drawBadge(in: frame, context: &context) }
     }
