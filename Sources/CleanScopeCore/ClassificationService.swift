@@ -7,6 +7,9 @@ public struct ClassifiedItemInput: Sendable {
   public var lastModified: Date?
   public var isProtected: Bool
   public var isExcluded: Bool
+  public var isCloudOnly: Bool
+  public var cloudOnlyBytes: Int64
+  public var requiresAdmin: Bool
 
   public init(
     path: String,
@@ -14,7 +17,10 @@ public struct ClassifiedItemInput: Sendable {
     itemType: ItemType,
     lastModified: Date? = nil,
     isProtected: Bool = false,
-    isExcluded: Bool = false
+    isExcluded: Bool = false,
+    isCloudOnly: Bool = false,
+    cloudOnlyBytes: Int64 = 0,
+    requiresAdmin: Bool = false
   ) {
     self.path = path
     self.sizeBytes = sizeBytes
@@ -22,6 +28,9 @@ public struct ClassifiedItemInput: Sendable {
     self.lastModified = lastModified
     self.isProtected = isProtected
     self.isExcluded = isExcluded
+    self.isCloudOnly = isCloudOnly
+    self.cloudOnlyBytes = cloudOnlyBytes
+    self.requiresAdmin = requiresAdmin
   }
 }
 
@@ -39,9 +48,34 @@ public struct ClassificationService: Sendable {
   }
 
   private let now: @Sendable () -> Date
+  public let rules: [ClassificationRule]
 
-  public init(now: @escaping @Sendable () -> Date = { Date() }) {
+  public init(
+    rules: [ClassificationRule] = ClassificationService.builtInRules,
+    now: @escaping @Sendable () -> Date = { Date() }
+  ) {
+    self.rules = rules
     self.now = now
+  }
+
+  /// Rule ids that other rules may override. Everything else, and `protect.*` above all, is fixed.
+  public static let overridableRuleIDs: Set<String> = [
+    "tool.application-support", "tool.developer-storage",
+  ]
+
+  /// Returns one message per invalid `overrides` entry; empty when the rule set is valid.
+  public static func validateOverrides(_ rules: [ClassificationRule]) -> [String] {
+    rules.flatMap { rule in
+      rule.overrides.compactMap { target -> String? in
+        if target.hasPrefix("protect.") {
+          return "\(rule.id) may not override protected rule \(target)"
+        }
+        if !overridableRuleIDs.contains(target) {
+          return "\(rule.id) overrides \(target), which is not overridable"
+        }
+        return nil
+      }
+    }
   }
 
   public static let builtInRules: [ClassificationRule] = [
@@ -251,8 +285,12 @@ public struct ClassificationService: Sendable {
 
   public func classify(_ input: ClassifiedItemInput) -> ScanResult {
     let context = makeContext(for: input)
-    let selected = Self.builtInRules
-      .filter { matches($0.matcher, context: context) }
+    let matching = rules.filter { matches($0.matcher, context: context) }
+    let overridden = Set(
+      matching.flatMap(\.overrides).filter { Self.overridableRuleIDs.contains($0) })
+    let selected =
+      matching
+      .filter { !overridden.contains($0.id) }
       .max { lhs, rhs in
         if lhs.category != rhs.category { return lhs.category < rhs.category }
         if lhs.confidence != rhs.confidence {
@@ -267,7 +305,8 @@ public struct ClassificationService: Sendable {
     let riskNote =
       selected?.riskNote
       ?? "Unknown files are not labeled as junk. Review this item manually in Finder."
-    let canMoveToTrash = category == .safeToDelete || category == .probablyUnused
+    let canMoveToTrash =
+      (category == .safeToDelete || category == .probablyUnused) && !input.isCloudOnly
     let unavailable = input.isProtected || input.isExcluded
     let deletionMethod: DeletionMethod =
       unavailable ? .notAllowed : (canMoveToTrash ? .trash : .manualReview)
@@ -292,7 +331,10 @@ public struct ClassificationService: Sendable {
       isSynced: isSynced(context),
       isExcluded: input.isExcluded,
       canDelete: canMoveToTrash && !unavailable,
-      deletionMethod: deletionMethod
+      deletionMethod: deletionMethod,
+      isCloudOnly: input.isCloudOnly,
+      cloudOnlyBytes: input.cloudOnlyBytes,
+      requiresAdmin: input.requiresAdmin
     )
   }
 
@@ -329,15 +371,20 @@ public struct ClassificationService: Sendable {
     case .modifiedAtLeastDaysAgo(let days):
       guard let lastModified = context.lastModified else { return false }
       return context.now.timeIntervalSince(lastModified) >= Double(days) * 86_400
+    case .nameMatches(let pattern):
+      return context.name.range(
+        of: pattern, options: [.regularExpression, .caseInsensitive]) != nil
     case .all(let matchers):
       return matchers.allSatisfy { matches($0, context: context) }
     case .any(let matchers):
       return matchers.contains { matches($0, context: context) }
+    case .not(let matcher):
+      return !matches(matcher, context: context)
     }
   }
 
   private func isSynced(_ context: Context) -> Bool {
-    guard let rule = Self.builtInRules.first(where: { $0.id == "protect.cloud-synced" }) else {
+    guard let rule = rules.first(where: { $0.id == "protect.cloud-synced" }) else {
       return false
     }
     return matches(rule.matcher, context: context)

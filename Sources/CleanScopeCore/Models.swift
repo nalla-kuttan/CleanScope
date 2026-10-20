@@ -65,6 +65,12 @@ public struct ScanResult: Identifiable, Codable, Equatable, Sendable {
   public var isExcluded: Bool
   public var canDelete: Bool
   public var deletionMethod: DeletionMethod
+  /// The file's content lives only in the cloud; it takes no local space.
+  public var isCloudOnly: Bool
+  /// Logical size of cloud-only content, for display only.
+  public var cloudOnlyBytes: Int64
+  /// The item's folder is not writable by the user, so removal needs an administrator.
+  public var requiresAdmin: Bool
 
   public init(
     id: String = UUID().uuidString,
@@ -87,7 +93,10 @@ public struct ScanResult: Identifiable, Codable, Equatable, Sendable {
     isSynced: Bool,
     isExcluded: Bool,
     canDelete: Bool,
-    deletionMethod: DeletionMethod
+    deletionMethod: DeletionMethod,
+    isCloudOnly: Bool = false,
+    cloudOnlyBytes: Int64 = 0,
+    requiresAdmin: Bool = false
   ) {
     self.id = id
     self.name = name
@@ -110,6 +119,44 @@ public struct ScanResult: Identifiable, Codable, Equatable, Sendable {
     self.isExcluded = isExcluded
     self.canDelete = canDelete
     self.deletionMethod = deletionMethod
+    self.isCloudOnly = isCloudOnly
+    self.cloudOnlyBytes = cloudOnlyBytes
+    self.requiresAdmin = requiresAdmin
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id, name, path, normalizedPath, sizeBytes, itemType, category, confidence, reason
+    case riskNote, recommendedAction, lastModified, ownerApp, ownerTool, fileExtension
+    case isHidden, isProtected, isSynced, isExcluded, canDelete, deletionMethod
+    case isCloudOnly, cloudOnlyBytes, requiresAdmin
+  }
+
+  public init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    id = try c.decode(String.self, forKey: .id)
+    name = try c.decode(String.self, forKey: .name)
+    path = try c.decode(String.self, forKey: .path)
+    normalizedPath = try c.decode(String.self, forKey: .normalizedPath)
+    sizeBytes = try c.decode(Int64.self, forKey: .sizeBytes)
+    itemType = try c.decode(ItemType.self, forKey: .itemType)
+    category = try c.decode(SafetyCategory.self, forKey: .category)
+    confidence = try c.decode(Confidence.self, forKey: .confidence)
+    reason = try c.decode(String.self, forKey: .reason)
+    riskNote = try c.decode(String.self, forKey: .riskNote)
+    recommendedAction = try c.decode(String.self, forKey: .recommendedAction)
+    lastModified = try c.decodeIfPresent(Date.self, forKey: .lastModified)
+    ownerApp = try c.decodeIfPresent(String.self, forKey: .ownerApp)
+    ownerTool = try c.decodeIfPresent(String.self, forKey: .ownerTool)
+    fileExtension = try c.decodeIfPresent(String.self, forKey: .fileExtension)
+    isHidden = try c.decode(Bool.self, forKey: .isHidden)
+    isProtected = try c.decode(Bool.self, forKey: .isProtected)
+    isSynced = try c.decode(Bool.self, forKey: .isSynced)
+    isExcluded = try c.decode(Bool.self, forKey: .isExcluded)
+    canDelete = try c.decode(Bool.self, forKey: .canDelete)
+    deletionMethod = try c.decode(DeletionMethod.self, forKey: .deletionMethod)
+    isCloudOnly = try c.decodeIfPresent(Bool.self, forKey: .isCloudOnly) ?? false
+    cloudOnlyBytes = try c.decodeIfPresent(Int64.self, forKey: .cloudOnlyBytes) ?? 0
+    requiresAdmin = try c.decodeIfPresent(Bool.self, forKey: .requiresAdmin) ?? false
   }
 }
 
@@ -158,6 +205,7 @@ public struct ScanSummary: Codable, Equatable, Sendable {
   public var doNotBulkDeleteBytes: Int64
   public var protectedBytes: Int64
   public var syncedBytes: Int64
+  public var cloudOnlyBytes: Int64
   public var largestItems: [String]
   public var largestHiddenFolders: [String]
 
@@ -173,6 +221,7 @@ public struct ScanSummary: Codable, Equatable, Sendable {
       .reduce(0, +)
     protectedBytes = results.filter(\.isProtected).map(\.sizeBytes).reduce(0, +)
     syncedBytes = results.filter(\.isSynced).map(\.sizeBytes).reduce(0, +)
+    cloudOnlyBytes = results.filter(\.isCloudOnly).map(\.cloudOnlyBytes).reduce(0, +)
     totalCleanableBytes = safeToDeleteBytes + probablyUnusedBytes + deleteIfAppUnusedBytes
     largestItems = results.sorted { $0.sizeBytes > $1.sizeBytes }.prefix(10).map(\.id)
     largestHiddenFolders =
@@ -181,6 +230,27 @@ public struct ScanSummary: Codable, Equatable, Sendable {
       .sorted { $0.sizeBytes > $1.sizeBytes }
       .prefix(10)
       .map(\.id)
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case totalResults, totalCleanableBytes, safeToDeleteBytes, probablyUnusedBytes
+    case deleteIfAppUnusedBytes, doNotBulkDeleteBytes, protectedBytes, syncedBytes
+    case cloudOnlyBytes, largestItems, largestHiddenFolders
+  }
+
+  public init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    totalResults = try c.decode(Int.self, forKey: .totalResults)
+    totalCleanableBytes = try c.decode(Int64.self, forKey: .totalCleanableBytes)
+    safeToDeleteBytes = try c.decode(Int64.self, forKey: .safeToDeleteBytes)
+    probablyUnusedBytes = try c.decode(Int64.self, forKey: .probablyUnusedBytes)
+    deleteIfAppUnusedBytes = try c.decode(Int64.self, forKey: .deleteIfAppUnusedBytes)
+    doNotBulkDeleteBytes = try c.decode(Int64.self, forKey: .doNotBulkDeleteBytes)
+    protectedBytes = try c.decode(Int64.self, forKey: .protectedBytes)
+    syncedBytes = try c.decode(Int64.self, forKey: .syncedBytes)
+    cloudOnlyBytes = try c.decodeIfPresent(Int64.self, forKey: .cloudOnlyBytes) ?? 0
+    largestItems = try c.decode([String].self, forKey: .largestItems)
+    largestHiddenFolders = try c.decode([String].self, forKey: .largestHiddenFolders)
   }
 }
 
@@ -325,8 +395,11 @@ public struct ClassificationRule: Identifiable, Codable, Equatable, Sendable {
     case extensionIn([String])
     case itemType(ItemType)
     case modifiedAtLeastDaysAgo(Int)
+    /// Case-insensitive regular expression tested against the item name.
+    case nameMatches(String)
     case all([Matcher])
     case any([Matcher])
+    case not(Matcher)
   }
 
   public var id: String
@@ -339,6 +412,8 @@ public struct ClassificationRule: Identifiable, Codable, Equatable, Sendable {
   public var riskNote: String
   public var ownerApp: String?
   public var ownerTool: String?
+  /// Ids of lower-priority rules this rule replaces when both match.
+  public var overrides: [String]
 
   public init(
     id: String,
@@ -350,7 +425,8 @@ public struct ClassificationRule: Identifiable, Codable, Equatable, Sendable {
     reason: String,
     riskNote: String,
     ownerApp: String? = nil,
-    ownerTool: String? = nil
+    ownerTool: String? = nil,
+    overrides: [String] = []
   ) {
     self.id = id
     self.name = name
@@ -362,6 +438,27 @@ public struct ClassificationRule: Identifiable, Codable, Equatable, Sendable {
     self.riskNote = riskNote
     self.ownerApp = ownerApp
     self.ownerTool = ownerTool
+    self.overrides = overrides
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id, name, matcher, category, confidence, specificity, reason, riskNote, ownerApp
+    case ownerTool, overrides
+  }
+
+  public init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    id = try c.decode(String.self, forKey: .id)
+    name = try c.decode(String.self, forKey: .name)
+    matcher = try c.decode(Matcher.self, forKey: .matcher)
+    category = try c.decode(SafetyCategory.self, forKey: .category)
+    confidence = try c.decode(Confidence.self, forKey: .confidence)
+    specificity = try c.decode(Int.self, forKey: .specificity)
+    reason = try c.decode(String.self, forKey: .reason)
+    riskNote = try c.decode(String.self, forKey: .riskNote)
+    ownerApp = try c.decodeIfPresent(String.self, forKey: .ownerApp)
+    ownerTool = try c.decodeIfPresent(String.self, forKey: .ownerTool)
+    overrides = try c.decodeIfPresent([String].self, forKey: .overrides) ?? []
   }
 }
 
