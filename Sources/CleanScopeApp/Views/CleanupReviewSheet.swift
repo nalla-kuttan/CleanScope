@@ -3,11 +3,17 @@ import SwiftUI
 
 struct CleanupReviewSheet: View {
   var items: [ScanResult]
-  var onConfirm: () -> Void
+  /// Receives exactly the items this sheet displayed.
+  var onConfirm: ([ScanResult]) -> Void
   @Environment(\.dismiss) private var dismiss
 
   private var summary: SelectionSummary {
     SelectionSummary(items: items)
+  }
+
+  private var trashButtonTitle: String {
+    let count = summary.itemCount
+    return "Move \(count) \(count == 1 ? "Item" : "Items") to Trash"
   }
 
   var body: some View {
@@ -71,14 +77,16 @@ struct CleanupReviewSheet: View {
         Button("Cancel", role: .cancel) {
           dismiss()
         }
+        .keyboardShortcut(.cancelAction)
         Spacer()
         Button(role: .destructive) {
+          let reviewed = items
           dismiss()
-          onConfirm()
+          onConfirm(reviewed)
         } label: {
-          Label("Move Selected Items to Trash", systemImage: "trash")
+          Label(trashButtonTitle, systemImage: "trash")
         }
-        .keyboardShortcut(.defaultAction)
+        .disabled(items.isEmpty)
       }
     }
     .padding(24)

@@ -149,9 +149,12 @@ final class AppModel: ObservableObject {
     SelectionSummary(items: selectedResults())
   }
 
-  func cleanupSelected() async {
-    cleanupSession = await deletionService.cleanup(selected: selectedResults())
-    selection = []
+  func cleanup(_ items: [ScanResult]) async {
+    let plan = ResultSelection.cleanupPlan(
+      reviewed: items, current: streamedResults, selection: selection)
+    guard !plan.items.isEmpty else { return }
+    cleanupSession = await deletionService.cleanup(selected: plan.items)
+    selection.subtract(plan.items.map(\.id))
     destination = .cleanupHistory
   }
 

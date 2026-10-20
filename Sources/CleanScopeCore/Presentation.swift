@@ -103,4 +103,25 @@ public enum ResultSelection {
     }
     return selection.subtracting(ids)
   }
+
+  /// Limits a cleanup to exactly the reviewed items that are still eligible in the current
+  /// results, and removes only those items from the selection.
+  public static func cleanupPlan(
+    reviewed: [ScanResult],
+    current: [ScanResult],
+    selection: Set<String>
+  ) -> CleanupPlan {
+    let currentByID = Dictionary(current.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+    var seen = Set<String>()
+    let items = reviewed.compactMap { item -> ScanResult? in
+      guard seen.insert(item.id).inserted, let latest = currentByID[item.id] else { return nil }
+      return eligible([latest]).first
+    }
+    return CleanupPlan(items: items, remainingSelection: selection.subtracting(items.map(\.id)))
+  }
+}
+
+public struct CleanupPlan: Equatable, Sendable {
+  public let items: [ScanResult]
+  public let remainingSelection: Set<String>
 }

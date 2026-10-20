@@ -120,11 +120,8 @@ struct DashboardView: View {
       ItemDetailView(result: result)
     }
     .sheet(isPresented: $showsReview) {
-      CleanupReviewSheet(items: quickWins) {
-        Task {
-          model.setSelection(true, for: quickWins)
-          await model.cleanupSelected()
-        }
+      CleanupReviewSheet(items: quickWins) { reviewed in
+        Task { await model.cleanup(reviewed) }
       }
     }
   }

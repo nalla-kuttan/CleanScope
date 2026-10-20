@@ -113,6 +113,50 @@ import Testing
     #expect(deselected == [b.id])
   }
 
+  @Test func cleanupPlanTouchesOnlyReviewedItems() async {
+    let reviewed = [resultFixture(path: "/tmp/quick-a"), resultFixture(path: "/tmp/quick-b")]
+    let selectedElsewhere = (0..<50).map { resultFixture(path: "/tmp/elsewhere-\($0)") }
+    let current = reviewed + selectedElsewhere
+    let selection = Set(selectedElsewhere.map(\.id))
+
+    let plan = ResultSelection.cleanupPlan(
+      reviewed: reviewed, current: current, selection: selection)
+
+    #expect(plan.items.map(\.id) == reviewed.map(\.id))
+    #expect(plan.remainingSelection == selection)
+
+    let trashed = TrashedPaths()
+    let service = DeletionService(
+      fileMover: { url in
+        await trashed.append(url.path)
+        return true
+      },
+      diskSnapshot: { 1_000 })
+    let session = await service.cleanup(selected: plan.items)
+
+    let trashedPaths = await trashed.paths
+    #expect(Set(trashedPaths) == Set(reviewed.map(\.normalizedPath)))
+    #expect(session.deletedItems.count == reviewed.count)
+  }
+
+  @Test func cleanupPlanRevalidatesReviewedItemsAgainstCurrentResults() {
+    let kept = resultFixture(path: "/tmp/kept")
+    var excludedSinceReview = resultFixture(path: "/tmp/excluded")
+    let missing = resultFixture(path: "/tmp/missing")
+    let reviewed = [kept, excludedSinceReview, missing]
+    excludedSinceReview.isExcluded = true
+    excludedSinceReview.canDelete = false
+
+    let plan = ResultSelection.cleanupPlan(
+      reviewed: reviewed,
+      current: [kept, excludedSinceReview],
+      selection: [kept.id, missing.id]
+    )
+
+    #expect(plan.items.map(\.id) == [kept.id])
+    #expect(plan.remainingSelection == [missing.id])
+  }
+
   private func resultFixture(
     path: String,
     category: SafetyCategory = .safeToDelete,
@@ -121,5 +165,13 @@ import Testing
     var result = ScanResult.fixture(path: path, sizeBytes: 100, category: category)
     result.confidence = confidence
     return result
+  }
+}
+
+private actor TrashedPaths {
+  private(set) var paths: [String] = []
+
+  func append(_ path: String) {
+    paths.append(path)
   }
 }

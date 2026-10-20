@@ -115,8 +115,8 @@ struct ResultsView: View {
       ItemDetailView(result: currentResult(for: result))
     }
     .sheet(isPresented: $showsReview) {
-      CleanupReviewSheet(items: model.selectedResults()) {
-        Task { await model.cleanupSelected() }
+      CleanupReviewSheet(items: model.selectedResults()) { reviewed in
+        Task { await model.cleanup(reviewed) }
       }
     }
     .onChange(of: filtered.map(\.id)) { visibleIDs in
