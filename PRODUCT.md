@@ -6,11 +6,13 @@ product
 
 ## Users
 
-CleanScope serves everyday Mac users who need understandable storage guidance, developers whose machines accumulate generated artifacts, and power users who want folder-level visibility. They open the app to answer two questions quickly: what is consuming space, and what can be removed without regret?
+CleanScope serves everyday Mac users who need understandable storage guidance, developers whose machines accumulate generated artifacts, and power users who want folder-level visibility and a clear view of how their Mac is doing. They open the app to answer a few questions quickly: what is consuming space, what can be removed without regret, what is running in the background, and does anything need attention?
 
 ## Product Purpose
 
-CleanScope audits local macOS storage, explains cleanup opportunities, classifies risk conservatively, and moves reviewed selections to Trash. Success means the user recovers useful space while understanding every recommendation and trusting that personal, synced, protected, and app-critical data will not be bulk deleted.
+CleanScope audits local macOS storage, explains cleanup opportunities, classifies risk conservatively, and moves reviewed selections to Trash. It also covers everyday Mac care: maintenance tasks, login and background items, memory, calm status alerts in an optional menu bar extra, and rule-based protection against known malware. Success means the user recovers useful space and keeps their Mac healthy while understanding every recommendation, and trusting that personal, synced, protected, and app-critical data will not be bulk deleted.
+
+Every action is reviewed before it runs. Riskier behaviors (permanent deletion, preselection, administrator tasks) are opt-in and explain their consequences first.
 
 ## Brand Personality
 
@@ -20,7 +22,9 @@ CleanScope should make storage maintenance feel lighter and more satisfying with
 
 ## Anti-references
 
-- Aggressive one-click cleaner apps that use alarms, gauges, warnings, or fear.
+- Aggressive one-click cleaner apps that use alarms, gauges, dials, or fear. Alerts are allowed when they are calm, state the fact and the next step, and can be snoozed.
+- Health scores without reasons. Any score shows its breakdown as a number and a list, never a dial.
+- Protection copy that promises complete safety or names threats to frighten.
 - Casino-like gamification, streak pressure, points, levels, or confetti.
 - Sterile gray administration panels with no personality or momentum.
 - Cartoon mascots, novelty illustrations, or jokes that undermine trust.
