@@ -48,6 +48,9 @@ struct SettingsView: View {
         Section("Menu Bar") {
           Toggle("Show CleanScope in the menu bar", isOn: $model.settings.showMenuBarExtra)
           Toggle("Open at login", isOn: $model.settings.openAtLogin)
+          Toggle("Show system monitors in the menu", isOn: $model.settings.showSystemMonitors)
+          Toggle("Show CPU temperature (experimental)", isOn: $model.settings.experimentalTemperature)
+            .disabled(!model.settings.showSystemMonitors)
           if let error = model.openAtLoginError {
             Text(error).font(.caption).foregroundStyle(.secondary)
           }
@@ -78,6 +81,12 @@ struct SettingsView: View {
           Toggle("Restart reminder after 14 days", isOn: $model.settings.restartReminderEnabled)
           Toggle("Low Bluetooth device battery", isOn: $model.settings.bluetoothBatteryAlertEnabled)
           Toggle("Heavy memory use", isOn: $model.settings.memoryAlertEnabled)
+          Toggle("Apps that stop responding", isOn: $model.settings.hungAppMonitoringEnabled)
+          if model.settings.hungAppMonitoringEnabled && !model.hungAppMonitor.isTrusted {
+            Text("Needs Accessibility access: System Settings › Privacy & Security › Accessibility.")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+          }
           HStack {
             Button("Reset Snoozed Alerts") {
               status.resetSnoozes()

@@ -126,7 +126,151 @@ struct MenuBarContentView: View {
   }
 }
 
-/// Placeholder until the system monitors land; replaced in the monitoring phase.
+/// CPU, memory, battery, network and disk with 60-second sparklines. Rows without data are
+/// hidden.
 struct SystemMonitorSections: View {
-  var body: some View { EmptyView() }
+  @EnvironmentObject private var model: AppModel
+  @EnvironmentObject private var status: StatusMonitor
+
+  var body: some View {
+    let metrics = model.metrics
+    VStack(alignment: .leading, spacing: 8) {
+      HungAppsSection(monitor: model.hungAppMonitor)
+      if model.settings.showSystemMonitors {
+        Divider()
+        MetricsRows(metrics: metrics, disk: status.disk)
+      }
+    }
+    .onAppear {
+      metrics.includesTemperature = model.settings.experimentalTemperature
+      if model.settings.showSystemMonitors { metrics.start() }
+    }
+    .onDisappear { metrics.stop() }
+  }
+}
+
+private struct HungAppsSection: View {
+  @ObservedObject var monitor: HungAppMonitor
+
+  var body: some View {
+    if !monitor.hungApps.isEmpty {
+      VStack(alignment: .leading, spacing: 4) {
+        Text("Not responding").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+        ForEach(monitor.hungApps) { app in
+          HStack {
+            Text(app.name)
+            Spacer()
+            Button("Force Quit") { monitor.forceQuit(app) }.controlSize(.small)
+          }
+        }
+      }
+    }
+  }
+}
+
+private struct MetricsRows: View {
+  @ObservedObject var metrics: MetricsSampler
+  var disk: DiskSnapshot?
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      if let cpu = metrics.cpuTotal {
+        MetricRow(
+          title: "CPU", value: "\(Int((cpu * 100).rounded()))%", series: metrics.cpu.values,
+          maximum: 1)
+      }
+      if let memory = metrics.memorySnapshot {
+        MetricRow(
+          title: "Memory",
+          value: "\(ByteCount.string(memory.usedBytes)) · \(MemoryService.pressureTitle(memory.pressureLevel))",
+          series: metrics.memory.values, maximum: 1)
+      }
+      if let battery = metrics.battery {
+        MetricRow(
+          title: "Battery",
+          value: batteryLine(battery),
+          series: [], maximum: 1)
+      }
+      if let health = metrics.batteryHealth, health.isCritical {
+        Text("Critical battery health: \(Int((health.healthFraction * 100).rounded()))% of original capacity.")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+      if let network = metrics.network {
+        MetricRow(
+          title: "Network",
+          value: "↓ \(rate(network.received)) ↑ \(rate(network.sent))",
+          series: metrics.networkIn.values,
+          maximum: max(metrics.networkIn.values.max() ?? 1, 1))
+      }
+      if let disk, disk.totalBytes > 0 {
+        MetricRow(
+          title: "Disk", value: "\(ByteCount.string(disk.availableBytes)) free", series: [],
+          maximum: 1)
+      }
+      if let temperature = metrics.temperature {
+        MetricRow(title: "CPU temperature", value: "\(Int(temperature.rounded()))°C", series: [], maximum: 1)
+      }
+    }
+  }
+
+  private func batteryLine(_ battery: BatteryCharge) -> String {
+    var text = "\(battery.percent)%"
+    if battery.isCharging { text += " · Charging" }
+    if let minutes = battery.minutesRemaining {
+      text += " · \(minutes / 60)h \(minutes % 60)m"
+    }
+    return text
+  }
+
+  private func rate(_ bytesPerSecond: Double) -> String {
+    ByteCount.string(Int64(bytesPerSecond)) + "/s"
+  }
+}
+
+private struct MetricRow: View {
+  var title: String
+  var value: String
+  var series: [Double]
+  var maximum: Double
+
+  var body: some View {
+    HStack(spacing: 8) {
+      Text(title).frame(width: 64, alignment: .leading)
+      Sparkline(values: series, maximum: maximum)
+        .frame(height: 16)
+        .opacity(series.count > 1 ? 1 : 0)
+      Text(value)
+        .monospacedDigit()
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
+        .layoutPriority(1)
+    }
+    .font(.caption)
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel("\(title), \(value)")
+  }
+}
+
+/// A small line of recent values. Decorative; the number next to it carries the meaning.
+struct Sparkline: View {
+  var values: [Double]
+  var maximum: Double
+
+  var body: some View {
+    GeometryReader { proxy in
+      Path { path in
+        guard values.count > 1, maximum > 0 else { return }
+        let step = proxy.size.width / CGFloat(max(values.count - 1, 1))
+        for (index, value) in values.enumerated() {
+          let point = CGPoint(
+            x: CGFloat(index) * step,
+            y: proxy.size.height * (1 - CGFloat(min(value / maximum, 1))))
+          index == 0 ? path.move(to: point) : path.addLine(to: point)
+        }
+      }
+      .stroke(BrandTheme.sage, lineWidth: 1.5)
+    }
+    .accessibilityHidden(true)
+  }
 }

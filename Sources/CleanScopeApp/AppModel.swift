@@ -97,6 +97,13 @@ final class AppModel: ObservableObject {
   private let systemSpace = SystemSpaceService()
   let notifications: NotificationCoordinator
   let statusMonitor: StatusMonitor
+  let hungAppMonitor: HungAppMonitor
+  let metrics = MetricsSampler()
+  /// Set by the protection scanner; read by the Mac status summary.
+  @Published var lastProtectionScan: Date?
+  @Published var threatsFound: Int?
+  private var pressureSince: Date?
+  private var pressureTimer: Timer?
 
   init(
     settingsStore: SettingsStore = SettingsStore(),
@@ -117,6 +124,7 @@ final class AppModel: ObservableObject {
     var settingsProvider: () -> CleanScopeCore.Settings = { loadedSettings }
     statusMonitor = StatusMonitor(
       notifications: notifications, settings: { settingsProvider() })
+    hungAppMonitor = HungAppMonitor(notifications: notifications)
     session = try? repository.loadLatest()
     streamedResults = session?.results ?? []
     if let session {
@@ -124,7 +132,53 @@ final class AppModel: ObservableObject {
     }
     settingsProvider = { [weak self] in self?.settings ?? loadedSettings }
     notifications.onAction = { [weak self] action in self?.handle(action) }
+    statusMonitor.supplementalInputs = { [weak self] in self?.supplementalAlertInputs() ?? AlertInputs() }
     statusMonitor.start()
+    hungAppMonitor.setEnabled(loadedSettings.hungAppMonitoringEnabled, prompt: false)
+    updatePressureTracking()
+  }
+
+  /// Memory pressure, uptime and Bluetooth batteries for the alert evaluator.
+  private func supplementalAlertInputs() -> AlertInputs {
+    var inputs = AlertInputs()
+    let level = MemoryService.pressureLevel()
+    inputs.memoryPressureLevel = level
+    inputs.pressureSince = pressureSince
+    inputs.uptime = Uptime.bootTime().map { Uptime.since(bootTime: $0) }
+    inputs.bluetooth = BluetoothBatteries.read()
+    return inputs
+  }
+
+  /// Samples memory pressure every 30 seconds while the memory alert is on, so a sustained
+  /// 2-minute episode can be noticed.
+  private func updatePressureTracking() {
+    pressureTimer?.invalidate()
+    pressureTimer = nil
+    pressureSince = nil
+    guard settings.memoryAlertEnabled else { return }
+    pressureTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+      Task { @MainActor in
+        guard let self else { return }
+        if MemoryService.pressureLevel() >= 2 {
+          if self.pressureSince == nil { self.pressureSince = Date() }
+          self.statusMonitor.evaluateAlerts()
+        } else {
+          self.pressureSince = nil
+        }
+      }
+    }
+  }
+
+  var statusSummary: StatusSummary {
+    StatusSummary.evaluate(
+      StatusInputs(
+        disk: statusMonitor.disk,
+        trashBytes: statusMonitor.trashBytes,
+        threatsFound: threatsFound,
+        lastProtectionScan: lastProtectionScan,
+        batteryHealth: BatteryHealth.read()?.healthFraction,
+        memoryPressure: MemoryService.pressureLevel()),
+      thresholds: AlertThresholds(settings: settings))
   }
 
   // MARK: - Settings side effects
@@ -136,6 +190,13 @@ final class AppModel: ObservableObject {
     if old.openAtLogin != settings.openAtLogin {
       updateOpenAtLogin(settings.openAtLogin)
     }
+    if old.hungAppMonitoringEnabled != settings.hungAppMonitoringEnabled {
+      hungAppMonitor.setEnabled(settings.hungAppMonitoringEnabled, prompt: true)
+    }
+    if old.memoryAlertEnabled != settings.memoryAlertEnabled {
+      updatePressureTracking()
+    }
+    metrics.includesTemperature = settings.experimentalTemperature
     let alertToggles: [KeyPath<CleanScopeCore.Settings, Bool>] = [
       \.lowDiskAlertEnabled, \.trashAlertEnabled, \.externalDriveAlertEnabled,
       \.memoryAlertEnabled, \.restartReminderEnabled, \.bluetoothBatteryAlertEnabled,

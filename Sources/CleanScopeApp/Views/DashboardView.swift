@@ -63,6 +63,8 @@ struct DashboardView: View {
           )
         }
 
+        MacStatusCard()
+
         SystemSpaceCard()
 
         PermissionBannerView(summary: model.permissionSummary)
