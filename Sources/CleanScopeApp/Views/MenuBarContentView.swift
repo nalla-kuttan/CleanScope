@@ -31,7 +31,7 @@ struct MenuBarContentView: View {
             .foregroundStyle(.secondary)
         }
         ProgressView(value: usedFraction)
-          .tint(BrandTheme.sage)
+          .tint(BrandTheme.accent)
           .accessibilityLabel("Startup disk used")
           .accessibilityValue("\(Int(usedFraction * 100)) percent")
       }
@@ -93,7 +93,7 @@ struct MenuBarContentView: View {
         Button("Quit CleanScope") { NSApp.terminate(nil) }
       }
       .buttonStyle(.plain)
-      .foregroundStyle(BrandTheme.bark)
+      .foregroundStyle(BrandTheme.textPrimary)
     }
     .padding(14)
     .frame(width: 300)
@@ -269,7 +269,7 @@ struct Sparkline: View {
           index == 0 ? path.move(to: point) : path.addLine(to: point)
         }
       }
-      .stroke(BrandTheme.sage, lineWidth: 1.5)
+      .stroke(BrandTheme.accent, lineWidth: 1.5)
     }
     .accessibilityHidden(true)
   }

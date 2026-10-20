@@ -41,28 +41,6 @@ enum BrandTheme {
     static let field = adaptive(light: 0xDFF2E8, dark: 0x173C33)
   }
 
-  // TEMPORARY (removed in Task 2): old token names
-  // Gap-features views still use the pre-audit palette names. Each maps to its role token
-  // until Task 2 re-tokens those views and deletes this block; do not use these in new code.
-  static let cream = surface
-  static let clearPaper = surface
-  static let clay = surfaceRaised
-  static let openMint = surfaceRaised
-  static let secondarySurface = surfaceRaised
-  static let bark = textPrimary
-  static let deepInk = textPrimary
-  static let warmGray = textSecondary
-  static let sage = accent
-  static let scopeForest = accent
-  static let moss = safe
-  static let freshLeaf = safe
-  static let amber = review
-  static let sunToken = review
-  static let terracotta = destructive
-  static let actionCoral = destructive
-  static let finderBlue = info
-  // END TEMPORARY
-
   static func animation(_ reduceMotion: Bool) -> Animation? {
     reduceMotion ? nil : .easeOut(duration: motionDuration)
   }

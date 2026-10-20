@@ -26,7 +26,7 @@ struct ProtectionView: View {
               Label("Scan", systemImage: "shield.lefthalf.filled")
             }
             .buttonStyle(.borderedProminent)
-            .tint(BrandTheme.sage)
+            .tint(BrandTheme.accent)
           }
         }
 
@@ -56,7 +56,7 @@ struct ProtectionView: View {
       .padding(24)
       .frame(maxWidth: 980, alignment: .leading)
     }
-    .background(BrandTheme.cream)
+    .background(BrandTheme.surface)
     .alert(
       "Remove \(pendingRemoval?.name ?? "")?",
       isPresented: Binding(get: { pendingRemoval != nil }, set: { if !$0 { pendingRemoval = nil } })
@@ -88,13 +88,13 @@ struct ProtectionView: View {
       StorageMetricView(
         label: "Last scan",
         value: model.protectionReport.map { $0.date.formatted(date: .abbreviated, time: .shortened) } ?? "Never",
-        symbol: "clock", tint: BrandTheme.finderBlue)
+        symbol: "clock", tint: BrandTheme.info)
       StorageMetricView(
         label: "Items to review", value: "\(model.protectionReport?.threats.count ?? 0)",
-        symbol: "exclamationmark.shield", tint: BrandTheme.amber)
+        symbol: "exclamationmark.shield", tint: BrandTheme.review)
       StorageMetricView(
         label: "Rules", value: model.ruleStatusLine, symbol: "list.bullet.rectangle",
-        tint: BrandTheme.sage)
+        tint: BrandTheme.accentText)
     }
   }
 
@@ -102,10 +102,10 @@ struct ProtectionView: View {
     HStack(alignment: .top, spacing: 12) {
       Image(systemName: "exclamationmark.shield")
         .font(.title2)
-        .foregroundStyle(BrandTheme.amber)
+        .foregroundStyle(BrandTheme.review)
         .accessibilityHidden(true)
       VStack(alignment: .leading, spacing: 3) {
-        Text(threat.name).font(.headline).foregroundStyle(BrandTheme.bark)
+        Text(threat.name).font(.headline).foregroundStyle(BrandTheme.textPrimary)
         Text("\(threat.category.title): \(threat.category.plainDescription)")
           .font(.subheadline)
           .foregroundStyle(.secondary)
@@ -129,7 +129,7 @@ struct ProtectionView: View {
       }
     }
     .padding(12)
-    .background(BrandTheme.clay)
+    .background(BrandTheme.surfaceRaised)
     .clipShape(RoundedRectangle(cornerRadius: BrandTheme.radius))
     .accessibilityElement(children: .contain)
   }

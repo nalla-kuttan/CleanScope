@@ -16,6 +16,9 @@
       return URL(fileURLWithPath: args[index + 1])
     }
 
+    /// True while a snapshot run is in progress; views skip work that could raise a permission prompt.
+    static var isActive: Bool { directory != nil }
+
     static var startsEmpty: Bool {
       ProcessInfo.processInfo.arguments.contains("--snapshot-empty")
     }

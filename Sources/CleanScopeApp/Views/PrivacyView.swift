@@ -17,7 +17,7 @@ struct PrivacyView: View {
           HStack(alignment: .firstTextBaseline) {
             Label("Download history", systemImage: "arrow.down.doc")
               .font(.headline)
-              .foregroundStyle(BrandTheme.bark)
+              .foregroundStyle(BrandTheme.textPrimary)
             Spacer()
             Text(count.map { "\($0) entr\($0 == 1 ? "y" : "ies")" } ?? "—")
               .monospacedDigit()
@@ -36,13 +36,13 @@ struct PrivacyView: View {
             .disabled((count ?? 0) == 0)
         }
         .padding(14)
-        .background(BrandTheme.clay)
+        .background(BrandTheme.surfaceRaised)
         .clipShape(RoundedRectangle(cornerRadius: BrandTheme.radius))
       }
       .padding(24)
       .frame(maxWidth: 980, alignment: .leading)
     }
-    .background(BrandTheme.cream)
+    .background(BrandTheme.surface)
     .task { refresh() }
     .alert("Clear \(count ?? 0) download history entries?", isPresented: $confirmsClear) {
       Button("Cancel", role: .cancel) {}

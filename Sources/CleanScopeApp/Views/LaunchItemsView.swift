@@ -19,7 +19,7 @@ struct LoginItemsView: View {
         HStack(spacing: 10) {
           Button("Show Login Items") { load() }
             .buttonStyle(.borderedProminent)
-            .tint(BrandTheme.sage)
+            .tint(BrandTheme.accent)
           Button("Open Login Items Settings") {
             NSWorkspace.shared.open(LegacyLoginItems.settingsURL)
           }
@@ -51,7 +51,7 @@ struct LoginItemsView: View {
                   Button("Remove…") { pendingRemoval = name }
                 }
                 .padding(10)
-                .background(BrandTheme.clay)
+                .background(BrandTheme.surfaceRaised)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
               }
             }
@@ -61,7 +61,7 @@ struct LoginItemsView: View {
       .padding(24)
       .frame(maxWidth: 980, alignment: .leading)
     }
-    .background(BrandTheme.cream)
+    .background(BrandTheme.surface)
     .alert(
       "Stop opening \(pendingRemoval ?? "") at login?",
       isPresented: Binding(get: { pendingRemoval != nil }, set: { if !$0 { pendingRemoval = nil } })
@@ -76,6 +76,10 @@ struct LoginItemsView: View {
   }
 
   private func run(_ source: String) -> (String?, String?) {
+    #if DEBUG
+      // Snapshot runs must never raise the macOS Automation permission prompt.
+      if DebugSnapshot.isActive { return (nil, "Skipped during a snapshot run.") }
+    #endif
     var error: NSDictionary?
     let result = NSAppleScript(source: source)?.executeAndReturnError(&error)
     if let error {
@@ -142,7 +146,7 @@ struct BackgroundItemsView: View {
       .padding(24)
       .frame(maxWidth: 980, alignment: .leading)
     }
-    .background(BrandTheme.cream)
+    .background(BrandTheme.surface)
     .task { await reload() }
     .alert(
       "Remove \(pendingRemoval?.displayName ?? "")?",
@@ -165,11 +169,11 @@ struct BackgroundItemsView: View {
         .frame(width: 32, height: 32)
       VStack(alignment: .leading, spacing: 3) {
         HStack(spacing: 6) {
-          Text(item.displayName).font(.headline).foregroundStyle(BrandTheme.bark)
+          Text(item.displayName).font(.headline).foregroundStyle(BrandTheme.textPrimary)
           if item.isBroken {
             Label("Broken", systemImage: "exclamationmark.triangle")
               .font(.caption.weight(.semibold))
-              .foregroundStyle(BrandTheme.terracotta)
+              .foregroundStyle(BrandTheme.destructive)
               .help("The program this item starts no longer exists.")
           }
         }
@@ -197,7 +201,7 @@ struct BackgroundItemsView: View {
       .fixedSize()
     }
     .padding(12)
-    .background(BrandTheme.clay)
+    .background(BrandTheme.surfaceRaised)
     .clipShape(RoundedRectangle(cornerRadius: BrandTheme.radius))
     .accessibilityElement(children: .combine)
   }
@@ -207,7 +211,7 @@ struct BackgroundItemsView: View {
       if let app = item.owningAppPath, FileManager.default.fileExists(atPath: app) {
         Image(nsImage: NSWorkspace.shared.icon(forFile: app)).resizable()
       } else {
-        Image(systemName: "gearshape").font(.title2).foregroundStyle(BrandTheme.warmGray)
+        Image(systemName: "gearshape").font(.title2).foregroundStyle(BrandTheme.textSecondary)
       }
     }
     .accessibilityHidden(true)
@@ -271,10 +275,10 @@ struct PageHeader: View {
     VStack(alignment: .leading, spacing: 3) {
       Text(title)
         .font(.system(size: 26, weight: .bold, design: .rounded))
-        .foregroundStyle(BrandTheme.bark)
+        .foregroundStyle(BrandTheme.textPrimary)
       Text(subtitle)
         .font(.system(.subheadline, design: .rounded))
-        .foregroundStyle(BrandTheme.warmGray)
+        .foregroundStyle(BrandTheme.textSecondary)
         .fixedSize(horizontal: false, vertical: true)
     }
   }

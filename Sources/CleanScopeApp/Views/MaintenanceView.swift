@@ -17,10 +17,10 @@ struct MaintenanceView: View {
           VStack(alignment: .leading, spacing: 3) {
             Text("Maintenance")
               .font(.system(size: 26, weight: .bold, design: .rounded))
-              .foregroundStyle(BrandTheme.bark)
+              .foregroundStyle(BrandTheme.textPrimary)
             Text("Routine tasks you can run when you need them. Tasks marked Administrator ask for your password each time.")
               .font(.system(.subheadline, design: .rounded))
-              .foregroundStyle(BrandTheme.warmGray)
+              .foregroundStyle(BrandTheme.textSecondary)
               .fixedSize(horizontal: false, vertical: true)
           }
           Spacer()
@@ -30,7 +30,7 @@ struct MaintenanceView: View {
             Label("Run Recommended", systemImage: "checklist")
           }
           .buttonStyle(.borderedProminent)
-          .tint(BrandTheme.sage)
+          .tint(BrandTheme.accent)
           .disabled(!running.isEmpty)
         }
 
@@ -41,7 +41,7 @@ struct MaintenanceView: View {
       .padding(24)
       .frame(maxWidth: 980, alignment: .leading)
     }
-    .background(BrandTheme.cream)
+    .background(BrandTheme.surface)
     .onAppear { runs = (try? store.load()) ?? [:] }
   }
 
@@ -49,14 +49,14 @@ struct MaintenanceView: View {
     HStack(alignment: .top, spacing: 12) {
       VStack(alignment: .leading, spacing: 4) {
         HStack(spacing: 6) {
-          Text(task.title).font(.headline).foregroundStyle(BrandTheme.bark)
+          Text(task.title).font(.headline).foregroundStyle(BrandTheme.textPrimary)
           if task.isRecommended {
             Text("Recommended")
               .font(.caption2.weight(.semibold))
               .padding(.horizontal, 6)
               .padding(.vertical, 2)
-              .background(Capsule().fill(BrandTheme.sage.opacity(0.15)))
-              .foregroundStyle(BrandTheme.moss)
+              .background(Capsule().fill(BrandTheme.accent.opacity(0.15)))
+              .foregroundStyle(BrandTheme.safe)
           }
           if task.requiresAdmin {
             Label("Administrator", systemImage: "lock")
@@ -81,7 +81,7 @@ struct MaintenanceView: View {
       }
     }
     .padding(14)
-    .background(BrandTheme.clay)
+    .background(BrandTheme.surfaceRaised)
     .clipShape(RoundedRectangle(cornerRadius: BrandTheme.radius))
   }
 

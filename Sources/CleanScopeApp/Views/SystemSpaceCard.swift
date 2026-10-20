@@ -23,7 +23,7 @@ struct SystemSpaceCard: View {
       HStack(alignment: .firstTextBaseline) {
         Label("System-managed space", systemImage: "gearshape.2")
           .font(.headline)
-          .foregroundStyle(BrandTheme.bark)
+          .foregroundStyle(BrandTheme.textPrimary)
         Spacer()
         if model.settings.allowSnapshotThinning && !model.localSnapshots.isEmpty {
           Button("Ask macOS to thin local snapshots…") { showsThinSheet = true }
@@ -36,13 +36,13 @@ struct SystemSpaceCard: View {
           label: "Purgeable",
           value: ByteCount.string(model.purgeableBytes),
           symbol: "arrow.3.trianglepath",
-          tint: BrandTheme.finderBlue
+          tint: BrandTheme.info
         )
         StorageMetricView(
           label: "Time Machine",
           value: snapshotSummary,
           symbol: "clock.arrow.circlepath",
-          tint: BrandTheme.finderBlue
+          tint: BrandTheme.info
         )
       }
 

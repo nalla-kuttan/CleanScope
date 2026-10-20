@@ -13,14 +13,14 @@ struct MacStatusCard: View {
       HStack(alignment: .firstTextBaseline) {
         Label("Mac status", systemImage: "stethoscope")
           .font(.headline)
-          .foregroundStyle(BrandTheme.bark)
+          .foregroundStyle(BrandTheme.textPrimary)
         Spacer()
         Button(showsBreakdown ? "Hide score" : "Score \(summary.score) of 100") {
           showsBreakdown.toggle()
         }
         .buttonStyle(.plain)
         .font(.subheadline.monospacedDigit())
-        .foregroundStyle(BrandTheme.warmGray)
+        .foregroundStyle(BrandTheme.textSecondary)
         .help("A weighted sum of the checks below.")
       }
 
@@ -28,11 +28,11 @@ struct MacStatusCard: View {
         ForEach(summary.checks) { check in
           HStack(spacing: 10) {
             Image(systemName: check.isGood ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-              .foregroundStyle(check.isGood ? BrandTheme.moss : BrandTheme.amber)
+              .foregroundStyle(check.isGood ? BrandTheme.safe : BrandTheme.review)
               .accessibilityHidden(true)
             Text(check.title).fontWeight(.semibold).frame(width: 90, alignment: .leading)
             Text(check.isGood ? "Good" : "Needs attention")
-              .foregroundStyle(check.isGood ? BrandTheme.moss : BrandTheme.bark)
+              .foregroundStyle(check.isGood ? BrandTheme.safe : BrandTheme.textPrimary)
               .frame(width: 120, alignment: .leading)
             Text(check.reason).foregroundStyle(.secondary).lineLimit(2)
             Spacer()
@@ -51,7 +51,7 @@ struct MacStatusCard: View {
         }
       }
       .padding(12)
-      .background(BrandTheme.clay)
+      .background(BrandTheme.surfaceRaised)
       .clipShape(RoundedRectangle(cornerRadius: BrandTheme.radius))
     }
   }

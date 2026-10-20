@@ -25,13 +25,13 @@ struct MemoryView: View {
             label: "Memory pressure",
             value: MemoryService.pressureTitle(snapshot.pressureLevel),
             symbol: "waveform.path.ecg",
-            tint: snapshot.pressureLevel >= 2 ? BrandTheme.amber : BrandTheme.moss)
+            tint: snapshot.pressureLevel >= 2 ? BrandTheme.review : BrandTheme.safe)
           StorageMetricView(
             label: "Swap used", value: ByteCount.string(snapshot.swapUsedBytes),
-            symbol: "arrow.left.arrow.right", tint: BrandTheme.finderBlue)
+            symbol: "arrow.left.arrow.right", tint: BrandTheme.info)
           StorageMetricView(
             label: "Installed", value: ByteCount.string(snapshot.totalBytes),
-            symbol: "memorychip", tint: BrandTheme.finderBlue)
+            symbol: "memorychip", tint: BrandTheme.info)
         }
 
         breakdown
@@ -41,7 +41,7 @@ struct MemoryView: View {
         VStack(alignment: .leading, spacing: 8) {
           Text("Using the most memory")
             .font(.system(.title3, design: .rounded).bold())
-            .foregroundStyle(BrandTheme.bark)
+            .foregroundStyle(BrandTheme.textPrimary)
           ForEach(consumers) { process in
             HStack {
               Text(process.name).lineLimit(1)
@@ -55,7 +55,7 @@ struct MemoryView: View {
             }
             .padding(.vertical, 6)
             .padding(.horizontal, 10)
-            .background(BrandTheme.clay)
+            .background(BrandTheme.surfaceRaised)
             .clipShape(RoundedRectangle(cornerRadius: 8))
           }
         }
@@ -63,7 +63,7 @@ struct MemoryView: View {
       .padding(24)
       .frame(maxWidth: 980, alignment: .leading)
     }
-    .background(BrandTheme.cream)
+    .background(BrandTheme.surface)
     .task { refresh() }
     .onReceive(timer) { _ in refresh() }
     .alert(
@@ -81,10 +81,10 @@ struct MemoryView: View {
 
   private var breakdown: some View {
     let parts: [(String, Int64, Color)] = [
-      ("App memory", snapshot.appBytes, BrandTheme.sage),
-      ("Wired", snapshot.wiredBytes, BrandTheme.finderBlue),
-      ("Compressed", snapshot.compressedBytes, BrandTheme.amber),
-      ("Cached files", snapshot.cachedBytes, BrandTheme.warmGray),
+      ("App memory", snapshot.appBytes, BrandTheme.accent),
+      ("Wired", snapshot.wiredBytes, BrandTheme.info),
+      ("Compressed", snapshot.compressedBytes, BrandTheme.review),
+      ("Cached files", snapshot.cachedBytes, BrandTheme.textSecondary),
     ]
     let total = max(1, snapshot.totalBytes)
     return VStack(alignment: .leading, spacing: 8) {
@@ -100,7 +100,7 @@ struct MemoryView: View {
       }
       .frame(height: 14)
       .clipShape(RoundedRectangle(cornerRadius: 4))
-      .background(RoundedRectangle(cornerRadius: 4).fill(BrandTheme.clay))
+      .background(RoundedRectangle(cornerRadius: 4).fill(BrandTheme.surfaceRaised))
       .accessibilityHidden(true)
 
       HStack(spacing: 16) {

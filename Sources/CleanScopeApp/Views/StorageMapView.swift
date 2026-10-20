@@ -55,7 +55,7 @@ struct StorageMapView: View {
       }
     }
     .padding(24)
-    .background(BrandTheme.cream)
+    .background(BrandTheme.surface)
     .onChange(of: model.session?.id) { _ in trail = [] }
   }
 
@@ -66,10 +66,10 @@ struct StorageMapView: View {
       VStack(alignment: .leading, spacing: 3) {
         Text("Storage Map")
           .font(.system(size: 26, weight: .bold, design: .rounded))
-          .foregroundStyle(BrandTheme.bark)
+          .foregroundStyle(BrandTheme.textPrimary)
         Text("Larger tiles use more space. Click a folder to look inside.")
           .font(.system(.subheadline, design: .rounded))
-          .foregroundStyle(BrandTheme.warmGray)
+          .foregroundStyle(BrandTheme.textSecondary)
       }
       Spacer()
       Toggle("Show as list", isOn: $showsList)
@@ -93,21 +93,21 @@ struct StorageMapView: View {
 
       Button(root?.name ?? "Scanned locations") { navigate(to: []) }
         .buttonStyle(.plain)
-        .foregroundStyle(trail.isEmpty ? BrandTheme.bark : BrandTheme.sage)
+        .foregroundStyle(trail.isEmpty ? BrandTheme.textPrimary : BrandTheme.accentText)
       ForEach(Array(trail.enumerated()), id: \.offset) { index, path in
         Image(systemName: "chevron.right")
           .font(.caption)
-          .foregroundStyle(BrandTheme.warmGray)
+          .foregroundStyle(BrandTheme.textSecondary)
         Button(URL(fileURLWithPath: path).lastPathComponent) {
           navigate(to: Array(trail.prefix(index + 1)))
         }
         .buttonStyle(.plain)
-        .foregroundStyle(index == trail.count - 1 ? BrandTheme.bark : BrandTheme.sage)
+        .foregroundStyle(index == trail.count - 1 ? BrandTheme.textPrimary : BrandTheme.accentText)
       }
       Spacer()
       Text(ByteCount.string(current.sizeBytes))
         .font(.system(.subheadline, design: .rounded).monospacedDigit())
-        .foregroundStyle(BrandTheme.warmGray)
+        .foregroundStyle(BrandTheme.textSecondary)
     }
     .font(.system(.subheadline, design: .rounded))
     .lineLimit(1)
@@ -162,27 +162,27 @@ struct StorageMapView: View {
   }
 
   private func tileView(_ tile: Tile, rect: CGRect) -> some View {
-    let tint = tile.node.isOtherItems ? BrandTheme.warmGray : tile.category.tintColor
+    let tint = tile.node.isOtherItems ? BrandTheme.textSecondary : tile.category.tintColor
     let isSelected = tile.result.map { model.selection.contains($0.id) } ?? false
     let showsLabel = rect.width >= 60 && rect.height >= 28
     return ZStack(alignment: .topLeading) {
       RoundedRectangle(cornerRadius: 6, style: .continuous)
         .fill(tint.opacity(hoveredID == tile.id ? 0.32 : 0.2))
       RoundedRectangle(cornerRadius: 6, style: .continuous)
-        .stroke(isSelected ? BrandTheme.sage : tint.opacity(0.55), lineWidth: isSelected ? 2.5 : 1)
+        .stroke(isSelected ? BrandTheme.accent : tint.opacity(0.55), lineWidth: isSelected ? 2.5 : 1)
       if showsLabel {
         VStack(alignment: .leading, spacing: 1) {
           HStack(spacing: 4) {
             Image(systemName: tile.node.isOtherItems ? "ellipsis.circle" : tile.category.symbolName)
               .foregroundStyle(tint)
             Text(tile.node.name)
-              .foregroundStyle(BrandTheme.bark)
+              .foregroundStyle(BrandTheme.textPrimary)
               .lineLimit(1)
           }
           .font(.system(size: 11, weight: .semibold, design: .rounded))
           Text(ByteCount.string(tile.node.sizeBytes))
             .font(.system(size: 10, design: .rounded).monospacedDigit())
-            .foregroundStyle(BrandTheme.warmGray)
+            .foregroundStyle(BrandTheme.textSecondary)
         }
         .padding(6)
       }
@@ -260,7 +260,7 @@ struct StorageMapView: View {
       Spacer()
     }
     .font(.system(.caption, design: .rounded))
-    .foregroundStyle(BrandTheme.warmGray)
+    .foregroundStyle(BrandTheme.textSecondary)
     .frame(height: 18)
   }
 
