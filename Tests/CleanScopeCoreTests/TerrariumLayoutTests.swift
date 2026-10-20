@@ -63,4 +63,27 @@ import Testing
     #expect(TerrariumLayout.growthStage(cleanupsInLast30Days: 3) == 3)
     #expect(TerrariumLayout.growthStage(cleanupsInLast30Days: 99) == 3)
   }
+
+  @Test func streamedCategoriesGlowTheirLayer() {
+    #expect(TerrariumLayer.Kind(category: .safeToDelete) == .safe)
+    #expect(TerrariumLayer.Kind(category: .probablyUnused) == .review)
+    #expect(TerrariumLayer.Kind(category: .deleteIfAppUnused) == .appData)
+    #expect(TerrariumLayer.Kind(category: .doNotBulkDelete) == .personal)
+  }
+
+  @Test func accessibilityLabelReadsTopToBottom() {
+    let layers = TerrariumLayout.layerHeights(
+      for: summary(
+        safe: 5_940_000_000, review: 6_300_000_000, appData: 22_900_000_000,
+        personal: 75_000_000_000),
+      diskUsedBytes: 158_140_000_000)
+    let label = TerrariumLayout.accessibilityLabel(for: layers)
+    let expected =
+      "Storage terrarium: \(ByteCount.string(5_940_000_000)) safe to reclaim, "
+      + "\(ByteCount.string(6_300_000_000)) worth a closer look, "
+      + "\(ByteCount.string(22_900_000_000)) app data, "
+      + "\(ByteCount.string(75_000_000_000)) personal files, "
+      + "\(ByteCount.string(48_000_000_000)) macOS and apps."
+    #expect(label == expected)
+  }
 }

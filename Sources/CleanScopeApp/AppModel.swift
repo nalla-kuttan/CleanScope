@@ -229,11 +229,15 @@ final class AppModel: ObservableObject {
   @Published private(set) var scanProgress: Double = 0
   /// Ids of results the app has moved to the Trash or deleted since the current scan began. The
   /// Storage Map leaves their tiles out, as the scan's tree itself is not rewritten.
-  @Published private(set) var trashedResultIDs: Set<String> = []
+  @Published private(set) var trashedResultIDs: Set<String> = [] {
+    didSet { refreshTerrariumLayers() }
+  }
   /// Category of the last result in the most recently flushed batch; nil until one arrives.
   @Published private(set) var latestStreamedCategory: SafetyCategory?
   @Published var permissionSummary: PermissionSummary?
-  @Published var disk: Disk?
+  @Published var disk: Disk? {
+    didSet { if disk != oldValue { refreshTerrariumLayers() } }
+  }
   @Published var exclusions: [ExclusionRule] = []
   @Published var alert: AppAlert?
   @Published var exclusionUndo: ExclusionUndo?
@@ -252,6 +256,15 @@ final class AppModel: ObservableObject {
   @Published private(set) var counts: [Destination: Int] = [:]
   @Published private(set) var safeCount = 0
   @Published private(set) var reviewCount = 0
+  /// Soil layers for the terrarium: the scan's categories without items already moved to the
+  /// Trash, over the disk's used space.
+  @Published private(set) var terrariumLayers: [TerrariumLayer] = []
+  /// The terrarium as it stood just before the current `cleanupSession`; Last Cleanup composts
+  /// from it. Nil when that cleanup removed nothing.
+  @Published private(set) var terrariumBeforeCleanup: TerrariumState?
+  /// A 120 × 80 pt still of the terrarium for the menu bar popover, refreshed after each scan
+  /// and cleanup.
+  @Published private(set) var terrariumSnapshot: NSImage?
 
   private let settingsStore: SettingsStore
   private let repository: ScanRepository
@@ -341,6 +354,8 @@ final class AppModel: ObservableObject {
     statusMonitor.start()
     hungAppMonitor.setEnabled(loadedSettings.hungAppMonitoringEnabled, prompt: false)
     updatePressureTracking()
+    refreshTerrariumLayers()
+    Task { @MainActor [weak self] in self?.refreshTerrariumSnapshot() }
     Task { await checkForRuleUpdates() }
     ruleTimer = Timer.scheduledTimer(withTimeInterval: 3_600, repeats: true) { [weak self] _ in
       Task { @MainActor in await self?.checkForRuleUpdates() }
@@ -660,6 +675,7 @@ final class AppModel: ObservableObject {
     scanner = nil
     if completed.status == .completed { scanProgress = 1 }
     isScanning = false
+    refreshTerrariumSnapshot()
   }
 
   /// Verification hooks: `--open-destination "<name>"` and `--start-scan limited|developer|full`.
@@ -718,6 +734,33 @@ final class AppModel: ObservableObject {
     func debugMarkTrashed(_ ids: Set<String>) {
       trashedResultIDs.formUnion(ids)
       selection.subtract(ids)
+    }
+
+    /// Pretends the largest Ready to Delete items were just moved to the Trash, for the Last
+    /// Cleanup snapshot (`--snapshot-cleanup`). It never calls `DeletionService` and writes no
+    /// files: the session and log entry live in memory only.
+    func debugSeedCleanup() {
+      let items = Array(
+        ResultPresentation.outermost(results(for: .readyToDelete))
+          .sorted { $0.sizeBytes > $1.sizeBytes }
+          .prefix(6))
+      guard !items.isEmpty else { return }
+      let before = TerrariumState(layers: terrariumLayers, growthStage: terrariumGrowthStage)
+      let available = disk?.availableBytes ?? 0
+      let deleted = items.map {
+        CleanupItemResult(
+          scanResultId: $0.id, path: $0.path, sizeBytes: $0.sizeBytes, status: .deleted,
+          message: "Moved to Trash")
+      }
+      var session = CleanupSession(
+        completedAt: Date(), diskSpaceBeforeBytes: available, selectedItemIds: items.map(\.id),
+        deletedItems: deleted, skippedItems: [], blockedItems: [], failedItems: [])
+      session.diskSpaceAfterBytes = available + session.recoveredBytes
+      cleanupLog.insert(
+        CleanupLogEntry(completedAt: Date(), recoveredBytes: session.recoveredBytes), at: 0)
+      debugMarkTrashed(Set(items.map(\.id)))
+      terrariumBeforeCleanup = before
+      cleanupSession = session
     }
 
     /// Replaces the session with a synthetic one for Storage Map checks (`--map-fixture`).
@@ -799,8 +842,11 @@ final class AppModel: ObservableObject {
     let plan = ResultSelection.cleanupPlan(
       reviewed: items, current: streamedResults, selection: selection)
     guard !plan.items.isEmpty else { return }
+    let terrariumBefore = TerrariumState(layers: terrariumLayers, growthStage: terrariumGrowthStage)
     cleanupSession = await deletionService.cleanup(
       selected: plan.items, method: method ?? cleanupMethod)
+    let removedAny = !(cleanupSession?.deletedItems.isEmpty ?? true)
+    terrariumBeforeCleanup = removedAny ? terrariumBefore : nil
     if let session = cleanupSession, !session.deletedItems.isEmpty {
       do {
         try cleanupLogStore.append(
@@ -816,7 +862,38 @@ final class AppModel: ObservableObject {
       trashedResultIDs.formUnion(session.deletedItems.map(\.scanResultId))
     }
     refreshDisk()
+    refreshTerrariumSnapshot()
     if navigatesToReport { destination = .lastCleanup }
+  }
+
+  // MARK: - Terrarium
+
+  /// 1…3 from the confirmed cleanups of the last 30 days.
+  var terrariumGrowthStage: Int {
+    let monthAgo = Date().addingTimeInterval(-30 * 24 * 60 * 60)
+    return TerrariumLayout.growthStage(
+      cleanupsInLast30Days: cleanupLog.filter { $0.completedAt > monthAgo }.count)
+  }
+
+  /// The terrarium layer glowing while a scan streams results in.
+  var terrariumGlowingLayer: TerrariumLayer.Kind? {
+    guard isScanning else { return nil }
+    return latestStreamedCategory.map(TerrariumLayer.Kind.init(category:))
+  }
+
+  private func refreshTerrariumLayers() {
+    let remaining =
+      trashedResultIDs.isEmpty
+      ? summary
+      : ScanSummary(results: streamedResults.filter { !trashedResultIDs.contains($0.id) })
+    let next = TerrariumLayout.layerHeights(for: remaining, diskUsedBytes: disk?.usedBytes ?? 0)
+    if next != terrariumLayers { terrariumLayers = next }
+  }
+
+  /// Renders the popover thumbnail offscreen. Called after a scan or cleanup, never per render.
+  private func refreshTerrariumSnapshot() {
+    terrariumSnapshot = TerrariumScene.snapshot(
+      layers: terrariumLayers, growthStage: terrariumGrowthStage)
   }
 
   var cleanupMethod: DeletionMethod {
@@ -885,6 +962,7 @@ final class AppModel: ObservableObject {
 
   private func recomputeDerived() {
     summary = ScanSummary(results: streamedResults)
+    defer { refreshTerrariumLayers() }
     safeCount = streamedResults.filter { $0.category == .safeToDelete }.count
     reviewCount = streamedResults.filter {
       $0.category == .probablyUnused || $0.category == .deleteIfAppUnused

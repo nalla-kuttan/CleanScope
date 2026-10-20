@@ -21,6 +21,13 @@ struct CleanupReportView: View {
 
           availability(cleanup)
 
+          TerrariumView(
+            layers: model.terrariumLayers, growthStage: model.terrariumGrowthStage,
+            mode: .afterCleanup, cleanupID: cleanup.id, before: model.terrariumBeforeCleanup
+          )
+          .frame(width: 360, height: 240)
+          .frame(maxWidth: .infinity)
+
           VStack(spacing: 0) {
             reportSection(
               "Removed", symbol: "trash.fill", tint: BrandTheme.safe,

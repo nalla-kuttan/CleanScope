@@ -1,6 +1,7 @@
 #if DEBUG
   import AppKit
   import CleanScopeCore
+  import SceneKit
   import SwiftUI
 
   /// Debug-only visual verification: `CleanScopeApp --snapshot-dir <dir> [--dark-preview]`
@@ -10,6 +11,8 @@
   /// `--snapshot-scan-cancelled` makes that scan a cancelled one. `--snapshot-collapse` also
   /// collapses a few selected Storage Map tiles as if they were trashed, without touching files.
   /// `--map-fixture <N>` swaps in a synthetic N-item tree; `--map-benchmark` then times the map.
+  /// `--snapshot-cleanup` seeds an in-memory cleanup of the largest quick wins before Last
+  /// Cleanup (no files are touched) and also captures its terrarium mid-compost.
   @MainActor
   enum DebugSnapshot {
     static var directory: URL? {
@@ -44,6 +47,46 @@
       ProcessInfo.processInfo.arguments.contains("--snapshot-collapse")
     }
 
+    static var seedsCleanup: Bool {
+      ProcessInfo.processInfo.arguments.contains("--snapshot-cleanup")
+    }
+
+    /// `--terrarium-cpu-check <seconds>`: instead of capturing, idles on the Dashboard with the
+    /// window shown, then minimised, for `seconds` each and prints this process's CPU use
+    /// (user + system time over wall time) for both phases.
+    static var terrariumCPUCheckSeconds: Double? {
+      let args = ProcessInfo.processInfo.arguments
+      guard let index = args.firstIndex(of: "--terrarium-cpu-check"), index + 1 < args.count
+      else { return nil }
+      return Double(args[index + 1])
+    }
+
+    private static func runTerrariumCPUCheck(seconds: Double) async {
+      func cpuSeconds() -> Double {
+        var usage = rusage()
+        getrusage(RUSAGE_SELF, &usage)
+        func seconds(_ time: timeval) -> Double {
+          Double(time.tv_sec) + Double(time.tv_usec) / 1_000_000
+        }
+        return seconds(usage.ru_utime) + seconds(usage.ru_stime)
+      }
+      func measure(_ phase: String) async {
+        let wallStart = Date()
+        let cpuStart = cpuSeconds()
+        print("terrarium-cpu: \(phase) start")
+        try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+        let percent = (cpuSeconds() - cpuStart) / Date().timeIntervalSince(wallStart) * 100
+        print(String(format: "terrarium-cpu: %@ %.1f%% of one core", phase, percent))
+      }
+      guard let window = NSApp.windows.first(where: \.isVisible) else { return }
+      try? await Task.sleep(nanoseconds: 1_000_000_000)
+      await measure("visible")
+      window.miniaturize(nil)
+      try? await Task.sleep(nanoseconds: 1_000_000_000)
+      print("terrarium-cpu: miniaturized=\(window.isMiniaturized)")
+      await measure("minimised")
+    }
+
     static func run(model: AppModel) async {
       if let count = MapFixture.requestedCount {
         let fixture = MapFixture.make(count: count)
@@ -66,9 +109,32 @@
       }
       NSApp.windows.first(where: \.isVisible)?.setContentSize(NSSize(width: 1180, height: 760))
 
+      if let seconds = terrariumCPUCheckSeconds {
+        await runTerrariumCPUCheck(seconds: seconds)
+        NSApp.terminate(nil)
+        return
+      }
+
       captureSidebar(directory.appendingPathComponent("\(prefix)sidebar-\(appearance).png"))
+      if let thumbnail = model.terrariumSnapshot?.cgImage(
+        forProposedRect: nil, context: nil, hints: nil)
+      {
+        let name = "\(prefix)menubar-terrarium-\(appearance).png"
+        try? NSBitmapImageRep(cgImage: thumbnail).representation(using: .png, properties: [:])?
+          .write(to: directory.appendingPathComponent(name))
+      }
 
       for destination in AppModel.Destination.allCases {
+        if destination == .lastCleanup, seedsCleanup, model.cleanupSession == nil {
+          model.debugSeedCleanup()
+          model.destination = destination
+          // The terrarium holds the old state for 0.4 s, then composts over 1.6 s.
+          try? await Task.sleep(nanoseconds: 1_200_000_000)
+          capture(directory.appendingPathComponent("\(prefix)lastCleanup-mid-\(appearance).png"))
+          try? await Task.sleep(nanoseconds: 1_800_000_000)
+          capture(directory.appendingPathComponent("\(prefix)lastCleanup-\(appearance).png"))
+          continue
+        }
         model.destination = destination
         try? await Task.sleep(nanoseconds: 900_000_000)
         capture(directory.appendingPathComponent("\(prefix)\(destination.rawValue)-\(appearance).png"))
@@ -143,7 +209,38 @@
         let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds)
       else { return }
       view.cacheDisplay(in: view.bounds, to: rep)
+      drawSceneViews(in: view, onto: rep)
       try? rep.representation(using: .png, properties: [:])?.write(to: url)
+    }
+
+    /// `cacheDisplay` can't read Metal-backed SceneKit views, so draw each one's own snapshot
+    /// over its frame (clipped to the part that is scrolled into view).
+    private static func drawSceneViews(in root: NSView, onto rep: NSBitmapImageRep) {
+      let sceneViews = descendants(of: root).compactMap { $0 as? SCNView }
+      guard !sceneViews.isEmpty, let context = NSGraphicsContext(bitmapImageRep: rep) else {
+        return
+      }
+      NSGraphicsContext.saveGraphicsState()
+      NSGraphicsContext.current = context
+      for sceneView in sceneViews where !sceneView.isHiddenOrHasHiddenAncestor {
+        let visible = sceneView.visibleRect
+        guard !visible.isEmpty else { continue }
+        var frame = sceneView.convert(sceneView.bounds, to: root)
+        var clip = sceneView.convert(visible, to: root)
+        if root.isFlipped {
+          frame.origin.y = root.bounds.height - frame.maxY
+          clip.origin.y = root.bounds.height - clip.maxY
+        }
+        NSGraphicsContext.saveGraphicsState()
+        NSBezierPath(rect: clip).addClip()
+        sceneView.snapshot().draw(in: frame)
+        NSGraphicsContext.restoreGraphicsState()
+      }
+      NSGraphicsContext.restoreGraphicsState()
+    }
+
+    private static func descendants(of view: NSView) -> [NSView] {
+      view.subviews + view.subviews.flatMap(descendants(of:))
     }
   }
 

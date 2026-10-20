@@ -19,7 +19,15 @@ struct DashboardView: View {
     let wins = quickWins
     ScrollView {
       VStack(alignment: .leading, spacing: 24) {
-        header
+        HStack(alignment: .center, spacing: 16) {
+          header
+          Spacer(minLength: 0)
+          TerrariumView(
+            layers: model.terrariumLayers, growthStage: model.terrariumGrowthStage,
+            mode: .dashboard, isScanning: model.isScanning, glowing: model.terrariumGlowingLayer
+          )
+          .frame(width: 360, height: 240)
+        }
 
         GrowthSummaryView(
           summary: model.summary,

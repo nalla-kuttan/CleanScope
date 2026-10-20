@@ -20,6 +20,12 @@ struct MenuBarContentView: View {
         ModuleIcon(key: .scan, size: 32)
         Text("CleanScope").font(.headline)
         Spacer()
+        if let terrarium = model.terrariumSnapshot {
+          Image(nsImage: terrarium)
+            .resizable()
+            .frame(width: 120, height: 80)
+            .accessibilityLabel(TerrariumLayout.accessibilityLabel(for: model.terrariumLayers))
+        }
       }
 
       VStack(alignment: .leading, spacing: 4) {

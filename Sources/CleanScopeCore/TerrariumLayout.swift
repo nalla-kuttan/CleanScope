@@ -2,7 +2,19 @@ import Foundation
 
 /// One soil layer of the terrarium, sized from a storage category.
 public struct TerrariumLayer: Equatable, Sendable {
-  public enum Kind: CaseIterable, Sendable { case system, personal, appData, review, safe }
+  public enum Kind: CaseIterable, Sendable {
+    case system, personal, appData, review, safe
+
+    /// The layer a scan result of `category` belongs to (it glows while such results stream in).
+    public init(category: SafetyCategory) {
+      switch category {
+      case .safeToDelete: self = .safe
+      case .probablyUnused: self = .review
+      case .deleteIfAppUnused: self = .appData
+      case .doNotBulkDelete: self = .personal
+      }
+    }
+  }
 
   public var kind: Kind
   public var bytes: Int64
@@ -38,6 +50,18 @@ public enum TerrariumLayout {
     case 1...2: return 2
     default: return 3
     }
+  }
+
+  /// The terrarium's single VoiceOver label, top layer first: "Storage terrarium: 5.94 GB safe to
+  /// reclaim, 6.3 GB worth a closer look, 22.9 GB app data, 75 GB personal files, 48 GB macOS and
+  /// apps."
+  public static func accessibilityLabel(for layers: [TerrariumLayer]) -> String {
+    func bytes(_ kind: TerrariumLayer.Kind) -> String {
+      ByteCount.string(layers.first { $0.kind == kind }?.bytes ?? 0)
+    }
+    return "Storage terrarium: \(bytes(.safe)) safe to reclaim, "
+      + "\(bytes(.review)) worth a closer look, \(bytes(.appData)) app data, "
+      + "\(bytes(.personal)) personal files, \(bytes(.system)) macOS and apps."
   }
 
   private static func height(forBytes bytes: Int64) -> Double {
