@@ -264,18 +264,27 @@ struct ResultCardRow: View {
             .lineLimit(1)
         }.buttonStyle(.plain)
 
-        Text(result.path)
-          .font(.system(size: 10, design: .rounded))
-          .foregroundStyle(BrandTheme.warmGray)
-          .lineLimit(1)
-          .help(result.path)
+        HStack(spacing: 4) {
+          if result.isCloudOnly {
+            Label("Cloud only", systemImage: "icloud")
+              .labelStyle(.titleAndIcon)
+              .font(.system(size: 10, weight: .semibold, design: .rounded))
+              .foregroundStyle(BrandTheme.finderBlue)
+              .help(CloudOnlyCopy.note)
+          }
+          Text(result.path)
+            .font(.system(size: 10, design: .rounded))
+            .foregroundStyle(BrandTheme.warmGray)
+            .lineLimit(1)
+            .help(result.path)
+        }
       }
       .frame(maxWidth: .infinity, alignment: .leading)
 
       Spacer(minLength: 4)
 
       // Metadata
-      Text(ByteCount.string(result.sizeBytes))
+      Text(ByteCount.string(result.isCloudOnly ? result.cloudOnlyBytes : result.sizeBytes))
         .font(.system(.subheadline, design: .rounded).monospacedDigit().weight(.medium))
         .foregroundStyle(BrandTheme.bark)
         .frame(width: 75, alignment: .trailing)
@@ -369,4 +378,8 @@ struct SafetyLabel: View {
       .lineLimit(1)
       .accessibilityLabel(category.label)
   }
+}
+
+enum CloudOnlyCopy {
+  static let note = "Stored in the cloud only. Removing it here deletes it from the cloud."
 }

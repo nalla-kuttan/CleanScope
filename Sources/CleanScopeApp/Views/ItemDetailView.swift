@@ -48,6 +48,16 @@ struct ItemDetailView: View {
       // Safety banner
       warningBanner
 
+      if result.isCloudOnly {
+        Label(
+          "\(CloudOnlyCopy.note) It uses no space on this Mac (\(ByteCount.string(result.cloudOnlyBytes)) in the cloud).",
+          systemImage: "icloud"
+        )
+        .font(.system(.subheadline, design: .rounded))
+        .foregroundStyle(BrandTheme.finderBlue)
+        .fixedSize(horizontal: false, vertical: true)
+      }
+
       // Metadata sections
       ScrollView {
         VStack(alignment: .leading, spacing: 14) {

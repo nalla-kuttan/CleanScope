@@ -398,6 +398,20 @@ public struct ClassificationService: Sendable {
       overrides: ["tool.application-support"]
     ),
     ClassificationRule(
+      id: "safe.appstore-downloads",
+      name: "App Store download cache",
+      matcher: .all([
+        .any([.pathPrefix("/var/folders/"), .pathPrefix("/private/var/folders/")]),
+        .any([.pathComponent("com.apple.appstoreagent"), .pathComponent("com.apple.appstorecomponentsd")]),
+      ]),
+      category: .safeToDelete,
+      confidence: .high,
+      specificity: 80,
+      reason: "App Store download cache",
+      riskNote: "The App Store downloads these files again if it needs them.",
+      ownerApp: "App Store"
+    ),
+    ClassificationRule(
       id: "safe.rotated-logs",
       name: "Rotated system log",
       matcher: .all([systemLogPrefix, .itemType(.file), rotatedLogName]),

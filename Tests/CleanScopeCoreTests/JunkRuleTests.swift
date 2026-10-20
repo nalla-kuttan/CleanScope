@@ -97,4 +97,13 @@ import Testing
     #expect(
       classify("/private/var/folders/ab/xyz/C/com.example").category == .safeToDelete)
   }
+
+  @Test func appStoreCachesAreNamed() {
+    for name in ["com.apple.appstoreagent", "com.apple.appstorecomponentsd"] {
+      let result = classify("/private/var/folders/d2/abc/C/\(name)")
+      #expect(result.category == .safeToDelete, Comment(rawValue: name))
+      #expect(result.ruleId == "safe.appstore-downloads", Comment(rawValue: name))
+      #expect(result.ownerApp == "App Store")
+    }
+  }
 }
