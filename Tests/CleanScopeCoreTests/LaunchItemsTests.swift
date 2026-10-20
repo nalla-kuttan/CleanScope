@@ -98,7 +98,7 @@ import Testing
     #expect(system.requiresAdmin)
     #expect(
       LaunchItemCommands.adminDisable(system)
-        == "/bin/launchctl bootout system '/Library/LaunchDaemons/it'\\''s.plist'; /bin/launchctl disable system/com.vendor.daemon")
+        == "/bin/launchctl bootout system '/Library/LaunchDaemons/it'\\''s.plist'; /bin/launchctl disable 'system/com.vendor.daemon'")
     #expect(
       LaunchItemCommands.adminRemove(system)
         == "/bin/launchctl bootout system '/Library/LaunchDaemons/it'\\''s.plist'; /usr/bin/trash '/Library/LaunchDaemons/it'\\''s.plist'")
@@ -110,5 +110,15 @@ import Testing
       LegacyLoginItems.deleteScript(name: #"My "App""#)
         == #"tell application "System Events" to delete login item "My \"App\"""#)
     #expect(LegacyLoginItems.parseNames("Dropbox, Bartender 5") == ["Dropbox", "Bartender 5"])
+  }
+
+  @Test func hostileLabelsStayQuotedInAdminCommands() {
+    let hostile = LaunchItem(
+      label: "x'; /bin/rm -rf /tmp/victim; echo '", program: nil,
+      plistPath: "/Library/LaunchDaemons/$(touch pwned).plist", scope: .systemDaemon)
+    let command = LaunchItemCommands.adminDisable(hostile)
+    #expect(command.contains(ShellQuote.quote("system/" + hostile.label)))
+    #expect(command.contains(ShellQuote.quote(hostile.plistPath)))
+    #expect(LaunchItemCommands.adminRemove(hostile).contains(ShellQuote.quote(hostile.plistPath)))
   }
 }

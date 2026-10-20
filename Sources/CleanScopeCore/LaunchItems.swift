@@ -221,7 +221,7 @@ public enum LaunchItemCommands {
   }
 
   public static func adminDisable(_ item: LaunchItem) -> String {
-    "/bin/launchctl bootout system \(ShellQuote.quote(item.plistPath)); /bin/launchctl disable system/\(item.label)"
+    "/bin/launchctl bootout system \(ShellQuote.quote(item.plistPath)); /bin/launchctl disable \(ShellQuote.quote("system/" + item.label))"
   }
 
   public static func adminRemove(_ item: LaunchItem) -> String {

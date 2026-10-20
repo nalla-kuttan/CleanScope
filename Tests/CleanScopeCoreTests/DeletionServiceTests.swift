@@ -176,4 +176,12 @@ import Testing
       path: "/Users/me/Downloads/old.zip", sizeBytes: 100, category: .probablyUnused)
     #expect(ResultPresentation.preselection(for: [cache, log, download]) == [cache.id])
   }
+
+  @Test func shellQuoteRoundTripsThroughRealShell() async throws {
+    let hostile = #"a b'c"d$(touch /tmp/cleanscope-pwned)`id`;\ \n*"#
+    let output = try await ProcessRunner().run(
+      "/bin/sh", ["-c", "printf %s " + ShellQuote.quote(hostile)], timeout: 5)
+    #expect(output.stdout == hostile)
+    #expect(!FileManager.default.fileExists(atPath: "/tmp/cleanscope-pwned"))
+  }
 }
