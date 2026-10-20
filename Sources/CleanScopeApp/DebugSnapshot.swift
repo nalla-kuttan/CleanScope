@@ -7,6 +7,7 @@
   /// visits every destination, writes a PNG of the window for each, and quits. Add
   /// `--snapshot-empty` to start without the saved scan. Add `--snapshot-scan-progress <0…1>`
   /// to capture a simulated mid-scan state built from the saved scan. It never scans or cleans.
+  /// `--map-fixture <N>` swaps in a synthetic N-item tree; `--map-benchmark` then times the map.
   @MainActor
   enum DebugSnapshot {
     static var directory: URL? {
@@ -34,6 +35,16 @@
     }
 
     static func run(model: AppModel) async {
+      if let count = MapFixture.requestedCount {
+        let fixture = MapFixture.make(count: count)
+        model.debugLoadMapFixture(fixture.session, selection: fixture.selection)
+        if MapFixture.isBenchmarking {
+          try? await Task.sleep(nanoseconds: 500_000_000)
+          MapFixture.runBenchmark(model: model)
+          NSApp.terminate(nil)
+          return
+        }
+      }
       guard let directory else { return }
       try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
       let appearance =
@@ -110,6 +121,138 @@
       else { return }
       view.cacheDisplay(in: view.bounds, to: rep)
       try? rep.representation(using: .png, properties: [:])?.write(to: url)
+    }
+  }
+
+  /// Debug-only Storage Map fixture and benchmark. `--map-fixture <N>` replaces the session with
+  /// N sibling items (mixed categories, a few preselected). `--map-benchmark` renders all N as
+  /// one `MapCanvas` offscreen 300 times at 1180 × 700, prints the mean, and quits.
+  @MainActor
+  enum MapFixture {
+    static var requestedCount: Int? {
+      let args = ProcessInfo.processInfo.arguments
+      guard let index = args.firstIndex(of: "--map-fixture"), index + 1 < args.count,
+        let count = Int(args[index + 1]), count > 0
+      else { return nil }
+      return count
+    }
+
+    static var isBenchmarking: Bool {
+      ProcessInfo.processInfo.arguments.contains("--map-benchmark")
+    }
+
+    private static let names = [
+      "Caches", "DerivedData", "node_modules", "Downloads", "Simulator Runtimes", "Mail Downloads",
+      "Xcode Archives", "Photos Library", "Logs", "Docker", "Homebrew", "Movies",
+    ]
+
+    /// The first 48 items are each over 1% of the total so the map shows them as tiles; the rest
+    /// are small and fold into "Other items" in the app (the benchmark draws every item).
+    static func make(count: Int) -> (session: ScanSession, selection: Set<String>) {
+      let unit: Double = 4_000_000_000
+      var children: [ScanNode] = []
+      var results: [ScanResult] = []
+      var selection = Set<String>()
+      for index in 0..<count {
+        let weight =
+          index < 48
+          ? 2.0 - 0.02 * Double(index)
+          : 26.6 / Double(max(count - 48, 1)) * (0.5 + Double((index * 37) % 100) / 100)
+        let size = Int64(unit * weight)
+        let name = "\(names[index % names.count]) \(index + 1)"
+        let path = "/fixture/\(name)"
+        let categories: [SafetyCategory?] = [
+          .safeToDelete, .probablyUnused, .deleteIfAppUnused, .doNotBulkDelete, nil,
+        ]
+        var resultID: String?
+        if let category = categories[index % categories.count] {
+          let id = "fixture-\(index)"
+          let canDelete = category != .doNotBulkDelete
+          results.append(
+            ScanResult(
+              id: id, name: name, path: path, normalizedPath: path, sizeBytes: size,
+              itemType: .folder, category: category, confidence: .high, reason: "Map fixture",
+              riskNote: "", recommendedAction: "", isHidden: false, isProtected: false,
+              isSynced: false, isExcluded: false, canDelete: canDelete,
+              deletionMethod: canDelete ? .trash : .notAllowed))
+          resultID = id
+          if category == .safeToDelete, index % 10 == 0 { selection.insert(id) }
+        }
+        children.append(
+          ScanNode(path: path, name: name, sizeBytes: size, itemType: .folder, resultId: resultID))
+      }
+      let total = children.reduce(0) { $0 + $1.sizeBytes }
+      var session = ScanSession(
+        status: .completed, scanMode: .limited, diskTotalBytes: total * 2, diskUsedBytes: total,
+        diskAvailableBytes: total, scannedPaths: ["/fixture"], skippedPaths: [], results: results)
+      session.tree = ScanNode(
+        path: "scan://fixture", name: "Map fixture", sizeBytes: total, itemType: .folder,
+        children: children)
+      return (session, selection)
+    }
+
+    static func runBenchmark(model: AppModel) {
+      guard let tree = model.session?.tree else {
+        print("map-benchmark: no fixture loaded")
+        return
+      }
+      let size = CGSize(width: 1180, height: 700)
+      let byID = Dictionary(
+        model.streamedResults.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+      let nodes = Dictionary(
+        tree.children.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+      let bounds = CGRect(
+        x: 0, y: MapTileStyle.lift, width: size.width, height: size.height - MapTileStyle.lift)
+      let tiles = TreemapLayout.squarify(
+        items: tree.children.map { ($0.id, $0.sizeBytes) }, in: bounds
+      ).compactMap { placed -> MapTile? in
+        guard let node = nodes[placed.id] else { return nil }
+        let result = node.resultId.flatMap { byID[$0] }
+        return MapTile(
+          id: node.id, name: node.name, bytes: node.sizeBytes,
+          tone: StorageMapPresentation.tone(for: node, results: byID), rect: placed.rect,
+          isSelectable: result.map { !ResultSelection.eligible([$0]).isEmpty } ?? false)
+      }
+      let selected = Set(
+        tiles.filter { tile in nodes[tile.id]?.resultId.map(model.selection.contains) ?? false }
+          .map(\.id))
+
+      func renderer() -> ImageRenderer<some View> {
+        let canvas = MapCanvas(
+          tiles: tiles, selection: selected, focusedID: .constant(nil),
+          onToggle: { _ in }, onDrill: { _ in }
+        )
+        .frame(width: size.width, height: size.height)
+        let renderer = ImageRenderer(content: canvas)
+        renderer.scale = 2
+        return renderer
+      }
+      func render() -> Bool { renderer().cgImage != nil }
+
+      // Warm-up, not timed. With `--snapshot-dir`, it also saves the frame for inspection.
+      if let directory = DebugSnapshot.directory, let image = renderer().cgImage {
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let rep = NSBitmapImageRep(cgImage: image)
+        try? rep.representation(using: .png, properties: [:])?
+          .write(to: directory.appendingPathComponent("map-benchmark.png"))
+      } else {
+        _ = render()
+      }
+      let frames = 300
+      var durations: [Double] = []
+      var rendered = 0
+      for _ in 0..<frames {
+        let start = DispatchTime.now().uptimeNanoseconds
+        if render() { rendered += 1 }
+        durations.append(Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000)
+      }
+      let mean = durations.reduce(0, +) / Double(frames)
+      let sorted = durations.sorted()
+      let p95 = sorted[Int(Double(frames) * 0.95) - 1]
+      print("map-benchmark: \(tiles.count) tiles, \(selected.count) selected")
+      print("map-benchmark: \(rendered)/\(frames) frames rendered")
+      print(String(format: "map-benchmark: p95 %.2f ms, max %.2f ms", p95, sorted.last ?? 0))
+      print(String(format: "map-benchmark: mean %.2f ms/frame", mean))
     }
   }
 #endif

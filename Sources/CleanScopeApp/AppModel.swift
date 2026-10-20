@@ -706,6 +706,13 @@ final class AppModel: ObservableObject {
       streamedResults = shown.map { ExclusionRule.applying(exclusions, to: $0) }
       latestStreamedCategory = shown.last?.category
     }
+
+    /// Replaces the session with a synthetic one for Storage Map checks (`--map-fixture`).
+    func debugLoadMapFixture(_ fixture: ScanSession, selection fixtureSelection: Set<String>) {
+      session = fixture
+      streamedResults = fixture.results
+      selection = fixtureSelection
+    }
   #endif
 
   // MARK: - System space

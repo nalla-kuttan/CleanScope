@@ -1,7 +1,7 @@
 import Foundation
 
 /// How a tile on the storage map is coloured.
-public enum MapTone: Equatable, Sendable {
+public enum MapTone: Hashable, Sendable {
   case category(SafetyCategory)
   case unclassified
   case free

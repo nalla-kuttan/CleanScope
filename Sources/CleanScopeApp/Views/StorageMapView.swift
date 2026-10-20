@@ -5,9 +5,9 @@ import SwiftUI
 /// Treemap of the latest scan. Click a folder to drill in; the breadcrumb or ⌘[ goes back up.
 struct StorageMapView: View {
   @EnvironmentObject private var model: AppModel
-  @EnvironmentObject private var motion: MotionPolicy
   @State private var trail: [String] = []
-  @State private var hoveredID: String?
+  @State private var focusedID: String?
+  @State private var cache = StorageMapCache()
   @State private var showsList = false
 
   private let classifier = ClassificationService()
@@ -35,10 +35,9 @@ struct StorageMapView: View {
             icon: .map
           )
         } else if showsList {
-          tileList(tiles)
+          tileList(tiles.filter { !$0.isFree })
         } else {
           treemap(tiles)
-          hoverBar(tiles)
         }
       } else {
         EmptyStateView(
@@ -121,16 +120,39 @@ struct StorageMapView: View {
   struct Tile: Identifiable {
     var node: ScanNode
     var result: ScanResult?
+    /// The classifier's category, shown in the list view.
     var category: SafetyCategory
-    var rect: CGRect = .zero
+    /// The map colour: the result's category, or the dominant one among its descendants.
+    var tone: MapTone
     var id: String { node.id }
-    var canDrill: Bool { !node.isOtherItems && !node.children.isEmpty }
+    var isFree: Bool { node.id == StorageMapPresentation.freeItemId }
+    var canDrill: Bool { !isFree && !node.isOtherItems && !node.children.isEmpty }
+    var isSelectable: Bool { result.map { !ResultSelection.eligible([$0]).isEmpty } ?? false }
   }
 
+  /// Tiles for `node`, rebuilt only when the node, the results or the free space change.
   private func makeTiles(for node: ScanNode) -> [Tile] {
+    let freeBytes = trail.isEmpty ? (model.disk?.availableBytes ?? 0) : 0
+    let key = StorageMapCache.Key(
+      sessionID: model.session?.id, nodeID: node.id, nodeBytes: node.sizeBytes,
+      results: model.streamedResults, freeBytes: freeBytes)
+    return cache.tiles(for: key) { buildTiles(for: node, freeBytes: freeBytes) }
+  }
+
+  private func buildTiles(for node: ScanNode, freeBytes: Int64) -> [Tile] {
     let byID = Dictionary(
       model.streamedResults.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-    return node.displayChildren().map { child in
+    let children = Dictionary(
+      node.displayChildren().map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+    let items = StorageMapPresentation.items(
+      for: node, isVolumeRoot: trail.isEmpty, freeBytes: freeBytes)
+    return items.compactMap { item -> Tile? in
+      if item.id == StorageMapPresentation.freeItemId {
+        let free = ScanNode(
+          path: item.id, name: "Free space", sizeBytes: item.size, itemType: .folder)
+        return Tile(node: free, result: nil, category: .safeToDelete, tone: .free)
+      }
+      guard let child = children[item.id] else { return nil }
       let result = child.resultId.flatMap { byID[$0] }
       let category =
         result?.category
@@ -140,131 +162,16 @@ struct StorageMapView: View {
             ClassifiedItemInput(
               path: child.path, sizeBytes: child.sizeBytes, itemType: child.itemType)
           ).category)
-      return Tile(node: child, result: result, category: category)
+      return Tile(
+        node: child, result: result, category: category,
+        tone: StorageMapPresentation.tone(for: child, results: byID))
     }
   }
 
   private func treemap(_ tiles: [Tile]) -> some View {
-    GeometryReader { proxy in
-      let bounds = CGRect(origin: .zero, size: proxy.size)
-      let layout = TreemapLayout.squarify(
-        items: tiles.map { ($0.id, $0.node.sizeBytes) }, in: bounds)
-      let rects = Dictionary(layout.map { ($0.id, $0.rect) }, uniquingKeysWith: { first, _ in first })
-      ZStack(alignment: .topLeading) {
-        ForEach(tiles) { tile in
-          if let rect = rects[tile.id] {
-            tileView(tile, rect: rect)
-          }
-        }
-      }
-      .animation(motion.animation(.easeInOut(duration: 0.2)), value: trail)
-    }
-    .frame(minHeight: 360)
-    .accessibilityElement(children: .contain)
-    .accessibilityLabel("Storage map")
-  }
-
-  private func tileView(_ tile: Tile, rect: CGRect) -> some View {
-    let tint = tile.node.isOtherItems ? BrandTheme.textSecondary : tile.category.tintColor
-    let isSelected = tile.result.map { model.selection.contains($0.id) } ?? false
-    let showsLabel = rect.width >= 60 && rect.height >= 28
-    return ZStack(alignment: .topLeading) {
-      RoundedRectangle(cornerRadius: 6, style: .continuous)
-        .fill(tint.opacity(hoveredID == tile.id ? 0.32 : 0.2))
-      RoundedRectangle(cornerRadius: 6, style: .continuous)
-        .stroke(isSelected ? BrandTheme.accent : tint.opacity(0.55), lineWidth: isSelected ? 2.5 : 1)
-      if showsLabel {
-        VStack(alignment: .leading, spacing: 1) {
-          HStack(spacing: 4) {
-            Image(systemName: tile.node.isOtherItems ? "ellipsis.circle" : tile.category.symbolName)
-              .foregroundStyle(tint)
-            Text(tile.node.name)
-              .foregroundStyle(BrandTheme.textPrimary)
-              .lineLimit(1)
-          }
-          .font(.system(size: 11, weight: .semibold, design: .rounded))
-          Text(ByteCount.string(tile.node.sizeBytes))
-            .font(.system(size: 10, design: .rounded).monospacedDigit())
-            .foregroundStyle(BrandTheme.textSecondary)
-        }
-        .padding(6)
-      }
-    }
-    .frame(width: max(0, rect.width - 2), height: max(0, rect.height - 2))
-    .position(x: rect.midX, y: rect.midY)
-    .contentShape(Rectangle())
-    .onHover { hoveredID = $0 ? tile.id : (hoveredID == tile.id ? nil : hoveredID) }
-    .onTapGesture { if tile.canDrill { navigate(to: trail + [tile.node.path]) } }
-    .contextMenu { tileMenu(tile) }
-    .help(tooltip(for: tile))
-    .accessibilityElement(children: .ignore)
-    .accessibilityLabel(
-      "\(tile.node.name), \(ByteCount.string(tile.node.sizeBytes)), \(tile.node.isOtherItems ? "Grouped small items" : tile.category.label)"
-    )
-    .accessibilityAddTraits(tile.canDrill ? .isButton : [])
-    .accessibilityAction { if tile.canDrill { navigate(to: trail + [tile.node.path]) } }
-  }
-
-  @ViewBuilder
-  private func tileMenu(_ tile: Tile) -> some View {
-    if tile.canDrill {
-      Button("Open") { navigate(to: trail + [tile.node.path]) }
-    }
-    if let result = tile.result, result.canDelete, !result.isExcluded {
-      let selected = model.selection.contains(result.id)
-      Button(selected ? "Deselect for Cleanup" : "Select for Cleanup") {
-        model.setSelection(!selected, for: result)
-      }
-    }
-    if !tile.node.isOtherItems {
-      Button("Show in Finder") {
-        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: tile.node.path)])
-      }
-    }
-  }
-
-  private func selectedBytes(under node: ScanNode) -> Int64 {
-    guard !node.isOtherItems else { return 0 }
-    return model.selectedResults()
-      .filter { $0.path == node.path || $0.path.hasPrefix(node.path + "/") }
-      .reduce(0) { $0 + $1.sizeBytes }
-  }
-
-  private func tooltip(for tile: Tile) -> String {
-    var lines = [tile.node.name, ByteCount.string(tile.node.sizeBytes)]
-    if let modified = tile.node.lastModified {
-      lines.append("Modified \(modified.formatted(date: .abbreviated, time: .omitted))")
-    }
-    lines.append(tile.node.isOtherItems ? "Grouped small items" : tile.category.label)
-    let selected = selectedBytes(under: tile.node)
-    if selected > 0 { lines.append("Selected: \(ByteCount.string(selected))") }
-    return lines.joined(separator: "\n")
-  }
-
-  private func hoverBar(_ tiles: [Tile]) -> some View {
-    let tile = tiles.first { $0.id == hoveredID }
-    return HStack(spacing: 12) {
-      if let tile {
-        Text(tile.node.name).fontWeight(.semibold).lineLimit(1)
-        Text(ByteCount.string(tile.node.sizeBytes)).monospacedDigit()
-        if let modified = tile.node.lastModified {
-          Text("Modified \(modified.formatted(date: .abbreviated, time: .omitted))")
-        }
-        if tile.node.isOtherItems {
-          Text("Grouped small items")
-        } else {
-          SafetyLabel(category: tile.category)
-        }
-        let selected = selectedBytes(under: tile.node)
-        if selected > 0 { Text("Selected \(ByteCount.string(selected))") }
-      } else {
-        Text("Hover over a tile for details. Right-click to select it for cleanup.")
-      }
-      Spacer()
-    }
-    .font(.system(.caption, design: .rounded))
-    .foregroundStyle(BrandTheme.textSecondary)
-    .frame(height: 18)
+    StorageMapArea(
+      tiles: tiles, cache: cache, focusedID: $focusedID,
+      onOpen: { navigate(to: trail + [$0.node.path]) })
   }
 
   private func tileList(_ tiles: [Tile]) -> some View {
@@ -306,12 +213,14 @@ struct StorageMapView: View {
   // MARK: - Navigation
 
   private func navigate(to newTrail: [String]) {
-    hoveredID = nil
+    focusedID = nil
     trail = newTrail
   }
 
+  /// Goes up one level and keeps keyboard focus on the folder just left.
   private func goUp() {
-    guard !trail.isEmpty else { return }
+    guard let left = trail.last else { return }
     navigate(to: Array(trail.dropLast()))
+    focusedID = left
   }
 }
