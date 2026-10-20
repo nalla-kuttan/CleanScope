@@ -12,7 +12,8 @@ let package = Package(
     .target(name: "CleanScopeCore"),
     .executableTarget(
       name: "CleanScopeApp",
-      dependencies: ["CleanScopeCore"]
+      dependencies: ["CleanScopeCore"],
+      resources: [.process("Resources")]
     ),
     .testTarget(
       name: "CleanScopeCoreTests",

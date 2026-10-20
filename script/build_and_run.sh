@@ -20,12 +20,15 @@ cd "$ROOT_DIR"
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 
 "$ROOT_DIR/script/swiftpm.sh" build
-BUILD_BINARY="$("$ROOT_DIR/script/swiftpm.sh" build --show-bin-path)/$APP_NAME"
+BUILD_PRODUCTS="$("$ROOT_DIR/script/swiftpm.sh" build --show-bin-path)"
+BUILD_BINARY="$BUILD_PRODUCTS/$APP_NAME"
+RESOURCE_BUNDLE="$BUILD_PRODUCTS/CleanScope_CleanScopeApp.bundle"
 
 rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_MACOS" "$APP_RESOURCES"
 cp "$BUILD_BINARY" "$APP_BINARY"
 cp "$APP_ICON" "$APP_RESOURCES/CleanScope.icns"
+cp -R "$RESOURCE_BUNDLE" "$APP_RESOURCES/"
 chmod +x "$APP_BINARY"
 
 cat >"$INFO_PLIST" <<PLIST
