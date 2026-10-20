@@ -5,39 +5,40 @@ struct EmptyStateView: View {
   var systemImage: String
   var message: String
   var usesBrandMark = false
+  var brandGrowthStage = 3
   var commandLabel: String?
   var action: (() -> Void)?
 
   var body: some View {
     VStack(spacing: 10) {
       if usesBrandMark {
-        BrandMarkView(size: 66, field: true)
+        BrandMarkView(size: 64, field: true, isDecorative: true, growthStage: brandGrowthStage)
       } else {
         Image(systemName: systemImage)
-          .font(.system(size: 34))
-          .foregroundStyle(BrandTheme.scopeForest)
-          .frame(width: 54, height: 54)
-          .background(BrandTheme.openMint)
-          .clipShape(RoundedRectangle(cornerRadius: BrandTheme.radius))
+          .font(.system(size: 30))
+          .foregroundStyle(BrandTheme.textSecondary)
+          .frame(width: 52, height: 52)
           .accessibilityHidden(true)
       }
 
       Text(title)
         .font(.title3.weight(.semibold))
-        .foregroundStyle(BrandTheme.deepInk)
+        .foregroundStyle(BrandTheme.textPrimary)
       Text(message)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(BrandTheme.textSecondary)
         .multilineTextAlignment(.center)
-        .frame(maxWidth: 440)
+        .frame(maxWidth: 420)
 
       if let commandLabel, let action {
         Button(commandLabel, action: action)
           .buttonStyle(.borderedProminent)
-          .tint(BrandTheme.scopeForest)
-          .padding(.top, 4)
+          .tint(BrandTheme.accent)
+          .controlSize(.large)
+          .padding(.top, 6)
       }
     }
     .padding(24)
     .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .accessibilityElement(children: .contain)
   }
 }

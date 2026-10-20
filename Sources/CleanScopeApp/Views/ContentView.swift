@@ -3,20 +3,37 @@ import SwiftUI
 
 struct ContentView: View {
   @EnvironmentObject private var model: AppModel
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   var body: some View {
-    HStack(spacing: 0) {
+    NavigationSplitView {
       SidebarView()
-
-      Rectangle()
-        .fill(BrandTheme.hairline)
-        .frame(width: 1)
-        .frame(maxHeight: .infinity)
-
+        .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 300)
+    } detail: {
       detailPane
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(BrandTheme.surface)
+        .overlay(alignment: .bottom) {
+          if let undo = model.exclusionUndo {
+            ExclusionUndoBar(undo: undo)
+              .padding(16)
+              .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
+          }
+        }
+        .animation(BrandTheme.animation(reduceMotion), value: model.exclusionUndo?.id)
     }
-    .background(BrandTheme.cream)
+    #if DEBUG
+      .task { await DebugSnapshot.run(model: model) }
+    #endif
+    .alert(
+      model.alert?.title ?? "",
+      isPresented: Binding(get: { model.alert != nil }, set: { if !$0 { model.alert = nil } }),
+      presenting: model.alert
+    ) { _ in
+      Button("OK", role: .cancel) {}
+    } message: { alert in
+      Text(alert.message)
+    }
   }
 
   @ViewBuilder
@@ -24,46 +41,46 @@ struct ContentView: View {
     switch model.destination ?? .dashboard {
     case .dashboard:
       DashboardView()
-    case .safeCleanup:
-      ResultsView(title: "Safe Cleanup", filter: { $0.category == .safeToDelete })
-    case .readyToDelete:
-      ResultsView(
-        title: "Ready to Delete",
-        filter: ResultPresentation.isReadyToDeleteCache,
-        subtitle: "High-confidence cache files that apps can recreate.",
-        emptyTitle: "No cache files are ready",
-        emptyMessage:
-          "Run a scan to look for high-confidence cache files that can safely move to Trash."
-      )
-    case .largeFiles:
-      ResultsView(
-        title: "Large Files", filter: { $0.sizeBytes >= model.settings.largeFileThresholdBytes })
-    case .hiddenFolders:
-      ResultsView(title: "Hidden Folders", filter: { $0.isHidden })
-    case .developerFiles:
-      ResultsView(title: "Developer Files", filter: { $0.ownerTool != nil })
-    case .appSupport:
-      ResultsView(
-        title: "App Support",
-        filter: {
-          $0.normalizedPath.localizedCaseInsensitiveContains("/Library/Application Support/")
-        })
-    case .downloads:
-      ResultsView(
-        title: "Downloads",
-        filter: {
-          $0.normalizedPath.localizedCaseInsensitiveContains("/Downloads/")
-        })
-    case .trash:
-      ResultsView(
-        title: "Trash",
-        filter: {
-          $0.normalizedPath.localizedCaseInsensitiveContains("/.Trash/")
-        })
-    case .cleanupHistory:
+    case .lastCleanup:
       CleanupReportView()
-    case .settings:
-      SettingsView()
+    case let destination:
+      ResultsView(destination: destination)
+        .id(destination)
     }
+  }
+}
+
+private struct ExclusionUndoBar: View {
+  @EnvironmentObject private var model: AppModel
+  var undo: AppModel.ExclusionUndo
+
+  var body: some View {
+    HStack(spacing: 12) {
+      Image(systemName: "eye.slash")
+        .foregroundStyle(BrandTheme.textSecondary)
+        .accessibilityHidden(true)
+      Text("“\(undo.name)” is excluded from results and cleanup.")
+        .foregroundStyle(BrandTheme.textPrimary)
+        .lineLimit(2)
+      Spacer(minLength: 8)
+      Button("Undo") { model.undoExclusion(undo) }
+      Button {
+        model.exclusionUndo = nil
+      } label: {
+        Image(systemName: "xmark")
+      }
+      .buttonStyle(.borderless)
+      .accessibilityLabel("Dismiss")
+      .help("Dismiss")
+    }
+    .padding(.horizontal, 14)
+    .padding(.vertical, 10)
+    .frame(maxWidth: 560)
+    .background(
+      RoundedRectangle(cornerRadius: BrandTheme.radius, style: .continuous)
+        .fill(BrandTheme.surfaceRaised)
+        .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
+    )
+    .accessibilityElement(children: .contain)
   }
 }

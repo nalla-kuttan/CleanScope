@@ -1,120 +1,89 @@
-import AppKit
+import CleanScopeCore
 import SwiftUI
 
 struct SidebarView: View {
   @EnvironmentObject private var model: AppModel
-  @State private var hoveredDest: AppModel.Destination?
 
   var body: some View {
-    VStack(spacing: 0) {
-      // Brand header
-      HStack(spacing: 10) {
-        BrandMarkView(size: 34, isDecorative: true)
-        VStack(alignment: .leading, spacing: 1) {
-          Text("CleanScope")
-            .font(.system(.headline, design: .rounded).bold())
-            .foregroundStyle(BrandTheme.bark)
-          Text("Greenhouse")
-            .font(.system(size: 10, weight: .semibold, design: .rounded))
-            .foregroundStyle(BrandTheme.sage)
+    List(selection: $model.destination) {
+      ForEach(AppModel.Destination.sections, id: \.title) { section in
+        Section(section.title) {
+          ForEach(section.destinations) { destination in
+            row(for: destination)
+              .tag(destination)
+          }
         }
+      }
+    }
+    .listStyle(.sidebar)
+    .safeAreaInset(edge: .top, spacing: 0) {
+      HStack(spacing: 8) {
+        BrandMarkView(size: 26, isDecorative: true)
+        Text("CleanScope")
+          .font(.headline)
+          .foregroundStyle(BrandTheme.textPrimary)
         Spacer()
       }
       .padding(.horizontal, 16)
-      .padding(.top, 18)
-      .padding(.bottom, 14)
+      .padding(.vertical, 8)
+      .accessibilityElement(children: .combine)
+    }
+    .safeAreaInset(edge: .bottom, spacing: 0) {
+      scanFooter
+    }
+  }
 
-      // Navigation rows
-      ScrollView {
-        VStack(spacing: 3) {
-          ForEach(AppModel.Destination.allCases) { dest in
-            SidebarRow(
-              destination: dest,
-              isActive: model.destination == dest,
-              isHovered: hoveredDest == dest
-            ) {
-              model.destination = dest
-            }
-            .onHover { over in hoveredDest = over ? dest : nil }
-          }
+  @ViewBuilder
+  private func row(for destination: AppModel.Destination) -> some View {
+    let label = Label(destination.title, systemImage: destination.systemImage)
+    if model.hasScanned || model.isScanning, let count = model.counts[destination] {
+      label.badge(count)
+    } else {
+      label
+    }
+  }
+
+  private var scanFooter: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      if model.isScanning {
+        Button {
+          model.cancelScan()
+        } label: {
+          Label("Cancel Scan", systemImage: "xmark.circle")
+            .frame(maxWidth: .infinity)
         }
-        .padding(.horizontal, 10)
+        .controlSize(.large)
+        .buttonStyle(.bordered)
+      } else {
+        Button {
+          Task { await model.startScan() }
+        } label: {
+          Label(model.hasScanned ? "Scan Again" : "Start Scan", systemImage: "leaf.fill")
+            .frame(maxWidth: .infinity)
+        }
+        .controlSize(.large)
+        .buttonStyle(.borderedProminent)
+        .tint(BrandTheme.accent)
       }
 
-      Spacer(minLength: 0)
-
-      // Scan action footer
-      VStack(spacing: 10) {
-        Button {
-          Task {
-            if model.isScanning {
-              model.cancelScan()
-            } else {
-              await model.startScan(
-                mode: model.settings.scanDeveloperFolders ? .developer : .limited)
-            }
-          }
-        } label: {
-          HStack(spacing: 6) {
-            Image(systemName: model.isScanning ? "xmark.circle.fill" : "leaf.fill")
-              .font(.system(size: 13, weight: .semibold))
-            Text(model.isScanning ? "Cancel" : "Start Scan")
-              .font(.system(.subheadline, design: .rounded).bold())
-          }
-          .frame(maxWidth: .infinity)
-          .padding(.vertical, 8)
+      HStack(spacing: 6) {
+        if model.isScanning {
+          ProgressView().controlSize(.small)
         }
-        .buttonStyle(.plain)
-        .foregroundStyle(.white)
-        .background(
-          Capsule()
-            .fill(model.isScanning ? BrandTheme.terracotta : BrandTheme.sage)
-        )
-
-        Text(model.isScanning ? "Scanning greenhouse…" : model.permissionSummary.message)
-          .font(.system(size: 10, design: .rounded))
-          .foregroundStyle(BrandTheme.warmGray)
+        Text(status)
+          .font(.caption)
+          .foregroundStyle(BrandTheme.textSecondary)
           .fixedSize(horizontal: false, vertical: true)
       }
-      .padding(.horizontal, 14)
-      .padding(.vertical, 12)
     }
-    .frame(width: 210)
-    .background(.ultraThinMaterial)
+    .padding(12)
   }
-}
 
-// MARK: - Sidebar Row
-
-private struct SidebarRow: View {
-  let destination: AppModel.Destination
-  let isActive: Bool
-  let isHovered: Bool
-  let action: () -> Void
-
-  var body: some View {
-    Button(action: action) {
-      HStack(spacing: 8) {
-        Image(systemName: destination.systemImage)
-          .font(.system(size: 13))
-          .foregroundStyle(isActive ? .white : (isHovered ? BrandTheme.bark : BrandTheme.warmGray))
-          .frame(width: 20)
-
-        Text(destination.rawValue)
-          .font(.system(.subheadline, design: .rounded).weight(isActive ? .semibold : .regular))
-          .foregroundStyle(isActive ? .white : (isHovered ? BrandTheme.bark : BrandTheme.warmGray))
-
-        Spacer()
-      }
-      .padding(.vertical, 7)
-      .padding(.horizontal, 10)
-      .background(
-        Capsule()
-          .fill(isActive ? BrandTheme.sage : (isHovered ? BrandTheme.clay : Color.clear))
-      )
+  private var status: String {
+    if model.isScanning {
+      return "Scanning… \(CountPhrase.make(model.summary.totalResults, "item")) found"
     }
-    .buttonStyle(.plain)
-    .scaleEffect(isHovered && !isActive ? 1.02 : 1.0)
-    .animation(.easeOut(duration: 0.15), value: isHovered)
+    guard let completedAt = model.session?.completedAt else { return "Not scanned yet" }
+    return "Last scan \(completedAt.formatted(.relative(presentation: .named)))"
   }
 }

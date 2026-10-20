@@ -12,66 +12,60 @@ struct CleanupReviewSheet: View {
   }
 
   private var trashButtonTitle: String {
-    let count = summary.itemCount
-    return "Move \(count) \(count == 1 ? "Item" : "Items") to Trash"
+    "Move \(CountPhrase.make(summary.itemCount, "Item")) to Trash"
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 18) {
-      HStack(spacing: 12) {
-        Image(systemName: "trash.circle.fill")
-          .font(.system(size: 34))
-          .foregroundStyle(BrandTheme.actionCoral)
-        VStack(alignment: .leading, spacing: 2) {
-          Text("Review cleanup")
-            .font(.title2.bold())
-          Text("Nothing is permanently deleted.")
-            .foregroundStyle(.secondary)
+    VStack(alignment: .leading, spacing: 16) {
+      HStack(alignment: .top, spacing: 12) {
+        Image(systemName: "trash")
+          .font(.system(size: 26))
+          .foregroundStyle(BrandTheme.destructive)
+          .frame(width: 36)
+          .accessibilityHidden(true)
+        VStack(alignment: .leading, spacing: 4) {
+          Text(
+            "Move \(CountPhrase.make(summary.itemCount, "item")) (\(ByteCount.string(summary.totalBytes))) to Trash?"
+          )
+          .font(.title3.weight(.semibold))
+          .foregroundStyle(BrandTheme.textPrimary)
+          .fixedSize(horizontal: false, vertical: true)
+          Text("Nothing is permanently deleted. You can put items back from the Trash until you empty it.")
+            .foregroundStyle(BrandTheme.textSecondary)
+            .fixedSize(horizontal: false, vertical: true)
         }
       }
 
-      HStack(spacing: 12) {
-        StorageMetricView(
-          label: "Selected items",
-          value: "\(summary.itemCount)",
-          symbol: "checkmark.circle",
-          tint: BrandTheme.scopeForest
-        )
-        StorageMetricView(
-          label: "Potential space",
-          value: ByteCount.string(summary.totalBytes),
-          symbol: "internaldrive",
-          tint: BrandTheme.finderBlue
-        )
-      }
-
-      VStack(alignment: .leading, spacing: 8) {
-        Text("Selection")
-          .font(.headline)
+      VStack(alignment: .leading, spacing: 6) {
         ForEach(SafetyCategory.allCases, id: \.rawValue) { category in
           let count = summary.categoryCounts[category] ?? 0
           if count > 0 {
             HStack {
               SafetyLabel(category: category)
               Spacer()
-              Text("\(count)")
+              Text(count.formatted())
                 .monospacedDigit()
-                .foregroundStyle(.secondary)
+                .foregroundStyle(BrandTheme.textSecondary)
             }
           }
         }
       }
-      .padding(14)
-      .background(BrandTheme.secondarySurface)
-      .clipShape(RoundedRectangle(cornerRadius: BrandTheme.radius))
 
-      Label(
-        "CleanScope will move allowed items to the macOS Trash. Protected or manual-review items remain in place.",
-        systemImage: "shield.checkered"
-      )
-      .font(.subheadline)
-      .foregroundStyle(.secondary)
-      .fixedSize(horizontal: false, vertical: true)
+      List(items) { item in
+        HStack {
+          Text(item.name)
+            .foregroundStyle(BrandTheme.textPrimary)
+            .lineLimit(1)
+            .help(item.path)
+          Spacer()
+          Text(ByteCount.string(item.sizeBytes))
+            .monospacedDigit()
+            .foregroundStyle(BrandTheme.textSecondary)
+        }
+      }
+      .listStyle(.bordered(alternatesRowBackgrounds: true))
+      .frame(height: min(CGFloat(items.count) * 24 + 8, 200))
+      .accessibilityLabel("Items to move to Trash")
 
       HStack {
         Button("Cancel", role: .cancel) {
@@ -84,12 +78,12 @@ struct CleanupReviewSheet: View {
           dismiss()
           onConfirm(reviewed)
         } label: {
-          Label(trashButtonTitle, systemImage: "trash")
+          Text(trashButtonTitle)
         }
         .disabled(items.isEmpty)
       }
     }
-    .padding(24)
-    .frame(width: 540)
+    .padding(20)
+    .frame(width: 500)
   }
 }
