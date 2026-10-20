@@ -5,6 +5,7 @@ struct DashboardView: View {
   @EnvironmentObject private var model: AppModel
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var selectedResult: ScanResult?
+  @State private var showsReview = false
 
   private var cleanableBytes: Int64 {
     ScanSummary(results: model.streamedResults).totalCleanableBytes
@@ -31,7 +32,7 @@ struct DashboardView: View {
 
   var body: some View {
     ScrollView {
-      VStack(alignment: .leading, spacing: 18) {
+      VStack(alignment: .leading, spacing: 20) {
         header
 
         GrowthSummaryView(
@@ -51,14 +52,14 @@ struct DashboardView: View {
           StorageMetricView(
             label: "Safe / generated",
             value: "\(generatedCount)",
-            symbol: "sparkles",
-            tint: BrandTheme.freshLeaf
+            symbol: "leaf.fill",
+            tint: BrandTheme.moss
           )
           StorageMetricView(
             label: "Needs review",
             value: "\(reviewCount)",
             symbol: "questionmark.circle",
-            tint: BrandTheme.sunToken
+            tint: BrandTheme.amber
           )
         }
 
@@ -68,12 +69,23 @@ struct DashboardView: View {
           HStack {
             VStack(alignment: .leading, spacing: 2) {
               Text("Quick Wins")
-                .font(.title2.bold())
+                .font(.system(.title2, design: .rounded).bold())
+                .foregroundStyle(BrandTheme.bark)
               Text("High-confidence items that can move safely to Trash.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .font(.system(.subheadline, design: .rounded))
+                .foregroundStyle(BrandTheme.warmGray)
             }
             Spacer()
+            if !quickWins.isEmpty && !model.isScanning {
+              Button {
+                showsReview = true
+              } label: {
+                Label("Clean All Quick Wins", systemImage: "leaf.fill")
+                  .font(.system(.subheadline, design: .rounded).weight(.semibold))
+              }
+              .buttonStyle(.bordered)
+              .tint(BrandTheme.sage)
+            }
             if model.isScanning {
               ProgressView()
                 .controlSize(.small)
@@ -86,7 +98,7 @@ struct DashboardView: View {
               title: model.isScanning ? "Looking for quick wins" : "No quick wins yet",
               systemImage: model.isScanning ? "magnifyingglass" : "checkmark.seal",
               message: model.isScanning
-                ? "Safe, high-confidence results will appear here as they are found."
+                ? "Safe results will appear here as they are found."
                 : "Run a scan to find generated files and caches."
             )
             .frame(minHeight: 180)
@@ -96,37 +108,44 @@ struct DashboardView: View {
               selectedResult: $selectedResult,
               showsBulkSelection: false
             )
-              .frame(minHeight: 220)
+            .frame(minHeight: 220)
           }
         }
       }
       .padding(24)
       .frame(maxWidth: 1180, alignment: .leading)
     }
-    .background(BrandTheme.clearPaper)
+    .background(BrandTheme.cream)
     .sheet(item: $selectedResult) { result in
       ItemDetailView(result: result)
+    }
+    .sheet(isPresented: $showsReview) {
+      CleanupReviewSheet(items: quickWins) {
+        Task {
+          model.setSelection(true, for: quickWins)
+          await model.cleanupSelected()
+        }
+      }
     }
   }
 
   private var header: some View {
     HStack(alignment: .center, spacing: 14) {
-      BrandMarkView(size: 54, field: true, isDecorative: true)
+      BrandMarkView(size: 50, field: true, isDecorative: true)
       VStack(alignment: .leading, spacing: 3) {
-        Text("Your Mac has room to grow.")
-          .font(.system(size: 28, weight: .bold))
-          .foregroundStyle(BrandTheme.deepInk)
+        Text("Your greenhouse is growing.")
+          .font(.system(size: 26, weight: .bold, design: .rounded))
+          .foregroundStyle(BrandTheme.bark)
         Text(scanStatus)
-          .font(.subheadline)
-          .foregroundStyle(.secondary)
+          .font(.system(.subheadline, design: .rounded))
+          .foregroundStyle(BrandTheme.warmGray)
       }
       Spacer()
 
       if model.isScanning {
-        Button {
-          model.cancelScan()
-        } label: {
+        Button { model.cancelScan() } label: {
           Label("Cancel", systemImage: "xmark.circle")
+            .font(.system(.subheadline, design: .rounded))
         }
       } else {
         Button {
@@ -135,10 +154,11 @@ struct DashboardView: View {
               mode: model.settings.scanDeveloperFolders ? .developer : .limited)
           }
         } label: {
-          Label(model.session == nil ? "Start Scan" : "Rescan", systemImage: "arrow.clockwise")
+          Label(model.session == nil ? "Start Scan" : "Rescan", systemImage: "leaf.fill")
+            .font(.system(.subheadline, design: .rounded).weight(.semibold))
         }
         .buttonStyle(.borderedProminent)
-        .tint(BrandTheme.scopeForest)
+        .tint(BrandTheme.sage)
       }
     }
   }

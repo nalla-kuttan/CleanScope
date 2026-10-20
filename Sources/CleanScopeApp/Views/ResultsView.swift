@@ -12,77 +12,105 @@ struct ResultsView: View {
   @State private var selectedResult: ScanResult?
   @State private var showsReview = false
   @State private var rangeAnchorID: String?
+  @State private var searchQuery = ""
+  @State private var sortField: SortField = .size
+
+  enum SortField: String, CaseIterable { case name, size, category, date }
 
   private var filtered: [ScanResult] {
-    model.streamedResults.filter(filter).sorted { $0.sizeBytes > $1.sizeBytes }
+    let base = model.streamedResults.filter(filter)
+    let searched = searchQuery.isEmpty ? base : base.filter {
+      $0.name.localizedCaseInsensitiveContains(searchQuery) ||
+      $0.path.localizedCaseInsensitiveContains(searchQuery)
+    }
+    switch sortField {
+    case .name: return searched.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    case .size: return searched.sorted { $0.sizeBytes > $1.sizeBytes }
+    case .category: return searched.sorted { $0.category.rawValue < $1.category.rawValue }
+    case .date: return searched.sorted { ($0.lastModified ?? .distantPast) > ($1.lastModified ?? .distantPast) }
+    }
   }
 
-  private var totalBytes: Int64 {
-    filtered.reduce(0) { $0 + $1.sizeBytes }
-  }
+  private var totalBytes: Int64 { filtered.reduce(0) { $0 + $1.sizeBytes } }
 
   private var selectionState: VisibleSelectionState {
     ResultSelection.state(visible: filtered, selectedIDs: model.selection)
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 14) {
+    VStack(alignment: .leading, spacing: 16) {
+      // Header
       HStack(alignment: .bottom) {
         VStack(alignment: .leading, spacing: 3) {
           Text(title)
-            .font(.system(size: 28, weight: .bold))
-            .foregroundStyle(BrandTheme.deepInk)
+            .font(.system(size: 26, weight: .bold, design: .rounded))
+            .foregroundStyle(BrandTheme.bark)
           if let subtitle {
-            Text(subtitle)
-              .font(.subheadline)
-              .foregroundStyle(.secondary)
+            Text(subtitle).font(.system(.subheadline, design: .rounded)).foregroundStyle(BrandTheme.warmGray)
           }
           Text("\(filtered.count) items · \(ByteCount.string(totalBytes))")
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
+            .font(.system(.subheadline, design: .rounded))
+            .foregroundStyle(BrandTheme.warmGray)
         }
         Spacer()
 
         if model.selectionSummary.itemCount > 0 {
           HStack(spacing: 10) {
-            Text(
-              "\(model.selectionSummary.itemCount) selected · "
-                + ByteCount.string(model.selectionSummary.totalBytes)
-            )
-            .font(.subheadline.weight(.medium))
-            .foregroundStyle(.secondary)
-            .monospacedDigit()
-
-            Button("Clear") {
-              model.clearSelection()
-              rangeAnchorID = nil
-            }
-
+            Text("\(model.selectionSummary.itemCount) selected · " + ByteCount.string(model.selectionSummary.totalBytes))
+              .font(.system(.subheadline, design: .rounded).weight(.medium))
+              .foregroundStyle(BrandTheme.warmGray)
+              .monospacedDigit()
+            Button("Clear") { model.clearSelection(); rangeAnchorID = nil }
             reviewButton
           }
         } else {
-          reviewButton
-            .disabled(true)
+          reviewButton.disabled(true)
         }
       }
 
-      if filtered.isEmpty {
-        EmptyStateView(
-          title: emptyTitle,
-          systemImage: "checkmark.seal",
-          message: emptyMessage
-        )
+      let baseFiltered = model.streamedResults.filter(filter)
+      if baseFiltered.isEmpty {
+        EmptyStateView(title: emptyTitle, systemImage: "checkmark.seal", message: emptyMessage)
       } else {
-        ResultsTable(
-          results: filtered,
-          selectedResult: $selectedResult,
-          onSelect: select,
-          onToggleAll: toggleAllVisible
-        )
+        // Search + Sort bar
+        HStack(spacing: 12) {
+          searchField
+          Spacer()
+          sortPills
+        }
+
+        if filtered.isEmpty {
+          EmptyStateView(title: "No matching results", systemImage: "magnifyingglass", message: "Try a different keyword.")
+        } else {
+          // Bulk select
+          HStack(spacing: 6) {
+            SelectionCheckbox(
+              state: checkboxState(selectionState),
+              isEnabled: !ResultSelection.eligible(filtered).isEmpty,
+              accessibilityLabel: selectionState == .all ? "Deselect all" : "Select all"
+            ) { _ in toggleAllVisible() }
+            Text(selectionState == .all ? "Deselect all" : "Select all visible")
+              .font(.system(.caption, design: .rounded))
+              .foregroundStyle(BrandTheme.warmGray)
+          }
+          .padding(.leading, 4)
+
+          // Card list
+          ScrollView {
+            LazyVStack(spacing: 6) {
+              ForEach(filtered) { result in
+                ResultCardRow(result: result, onToggle: { select(result, usingRange: false) }) {
+                  selectedResult = result
+                }
+              }
+            }
+            .padding(.vertical, 2)
+          }
+        }
       }
     }
     .padding(24)
-    .background(BrandTheme.clearPaper)
+    .background(BrandTheme.cream)
     .sheet(item: $selectedResult) { result in
       ItemDetailView(result: currentResult(for: result))
     }
@@ -92,225 +120,234 @@ struct ResultsView: View {
       }
     }
     .onChange(of: filtered.map(\.id)) { visibleIDs in
-      if let rangeAnchorID, !visibleIDs.contains(rangeAnchorID) {
-        self.rangeAnchorID = nil
+      if let rangeAnchorID, !visibleIDs.contains(rangeAnchorID) { self.rangeAnchorID = nil }
+    }
+  }
+
+  // MARK: - Sub-views
+
+  private var searchField: some View {
+    HStack(spacing: 6) {
+      Image(systemName: "magnifyingglass").foregroundStyle(BrandTheme.warmGray)
+      TextField("Search…", text: $searchQuery)
+        .textFieldStyle(.plain)
+        .font(.system(.subheadline, design: .rounded))
+        .frame(width: 180)
+      if !searchQuery.isEmpty {
+        Button { searchQuery = "" } label: {
+          Image(systemName: "xmark.circle.fill").foregroundStyle(BrandTheme.warmGray)
+        }.buttonStyle(.plain)
+      }
+    }
+    .padding(.horizontal, 10)
+    .padding(.vertical, 6)
+    .background(Capsule().fill(BrandTheme.clay))
+    .overlay(Capsule().stroke(BrandTheme.hairline))
+  }
+
+  private var sortPills: some View {
+    HStack(spacing: 6) {
+      Text("Sort:").font(.system(.caption, design: .rounded)).foregroundStyle(BrandTheme.warmGray)
+      ForEach(SortField.allCases, id: \.self) { field in
+        Button {
+          sortField = field
+          BrandTheme.triggerHaptic()
+        } label: {
+          Text(field.rawValue.capitalized)
+            .font(.system(.caption, design: .rounded).weight(sortField == field ? .bold : .regular))
+            .foregroundStyle(sortField == field ? .white : BrandTheme.warmGray)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(Capsule().fill(sortField == field ? BrandTheme.sage : BrandTheme.clay))
+        }
+        .buttonStyle(.plain)
       }
     }
   }
+
+  private var reviewButton: some View {
+    Button { showsReview = true } label: {
+      Label("Review Cleanup", systemImage: "checklist")
+        .font(.system(.subheadline, design: .rounded).weight(.semibold))
+    }
+    .buttonStyle(.borderedProminent)
+    .tint(BrandTheme.sage)
+  }
+
+  // MARK: - Helpers
 
   private func currentResult(for result: ScanResult) -> ScanResult {
     model.streamedResults.first(where: { $0.id == result.id }) ?? result
   }
 
-  private var reviewButton: some View {
-    Button {
-      showsReview = true
-    } label: {
-      Label("Review Cleanup", systemImage: "checklist")
-    }
-    .buttonStyle(.borderedProminent)
-    .tint(BrandTheme.scopeForest)
-  }
-
-  private func toggleAllVisible() {
-    model.setSelection(selectionState != .all, for: filtered)
-  }
+  private func toggleAllVisible() { model.setSelection(selectionState != .all, for: filtered) }
 
   private func select(_ result: ScanResult, usingRange: Bool) {
     let shouldSelect = !model.selection.contains(result.id)
-
     if usingRange, let rangeAnchorID {
-      let ids = Set(
-        ResultSelection.eligibleIDs(
-          in: filtered,
-          from: rangeAnchorID,
-          through: result.id
-        ))
+      let ids = Set(ResultSelection.eligibleIDs(in: filtered, from: rangeAnchorID, through: result.id))
       let rangeItems = filtered.filter { ids.contains($0.id) }
-      if rangeItems.isEmpty {
-        model.setSelection(shouldSelect, for: result)
-      } else {
-        model.setSelection(shouldSelect, for: rangeItems)
-      }
+      if rangeItems.isEmpty { model.setSelection(shouldSelect, for: result) }
+      else { model.setSelection(shouldSelect, for: rangeItems) }
     } else {
       model.setSelection(shouldSelect, for: result)
     }
-
     rangeAnchorID = result.id
   }
+
+  private func checkboxState(_ state: VisibleSelectionState) -> SelectionCheckbox.State {
+    switch state { case .none: return .off; case .some: return .mixed; case .all: return .on }
+  }
 }
+
+// MARK: - ResultsTable (kept for DashboardView Quick Wins compatibility)
 
 struct ResultsTable: View {
   @EnvironmentObject private var model: AppModel
   var results: [ScanResult]
+  var sortOrder: Binding<[KeyPathComparator<ScanResult>]> = .constant([])
   var selectedResult: Binding<ScanResult?> = .constant(nil)
   var showsBulkSelection = true
   var onSelect: ((ScanResult, Bool) -> Void)?
   var onToggleAll: (() -> Void)?
 
-  private var visibleSelectionState: VisibleSelectionState {
-    ResultSelection.state(visible: results, selectedIDs: model.selection)
-  }
-
   var body: some View {
-    VStack(alignment: .leading, spacing: 6) {
-      if showsBulkSelection {
-        HStack(spacing: 6) {
-          SelectionCheckbox(
-            state: checkboxState(visibleSelectionState),
-            isEnabled: !ResultSelection.eligible(results).isEmpty,
-            accessibilityLabel: visibleSelectionState == .all
-              ? "Deselect all eligible visible items"
-              : "Select all eligible visible items"
-          ) { _ in
-            onToggleAll?()
-          }
-          Text(visibleSelectionState == .all ? "Deselect all visible" : "Select all visible")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        }
-        .padding(.leading, 8)
-      }
-
-      Table(results) {
-        TableColumn("") { result in
-          SelectionCheckbox(
-            state: model.selection.contains(result.id) ? .on : .off,
-            isEnabled: result.canDelete && !result.isExcluded,
-            accessibilityLabel: model.selection.contains(result.id)
-              ? "Deselect \(result.name)"
-              : "Select \(result.name)"
-          ) { usesRangeSelection in
-            if let onSelect {
-              onSelect(result, usesRangeSelection)
-            } else {
-              model.toggleSelection(result)
-            }
-          }
-          .help(result.canDelete ? "Include in cleanup" : "This item requires manual review")
-        }
-        .width(36)
-
-        TableColumn("Name") { result in
-          Button {
+    ScrollView {
+      LazyVStack(spacing: 6) {
+        ForEach(results) { result in
+          ResultCardRow(result: result, onToggle: {
+            if let onSelect { onSelect(result, false) }
+            else { model.toggleSelection(result) }
+          }) {
             selectedResult.wrappedValue = result
-          } label: {
-            HStack(spacing: 6) {
-              Image(systemName: result.itemType == .folder ? "folder" : "doc")
-                .foregroundStyle(result.isExcluded ? Color.secondary : BrandTheme.finderBlue)
-              Text(result.name)
-                .foregroundStyle(result.isExcluded ? Color.secondary : BrandTheme.deepInk)
-                .lineLimit(1)
-            }
           }
-          .buttonStyle(.plain)
-          .help("View item details")
         }
-
-        TableColumn("Size") { result in
-          Text(ByteCount.string(result.sizeBytes))
-            .monospacedDigit()
-        }
-        .width(min: 78, ideal: 94)
-
-        TableColumn("Category") { result in
-          SafetyLabel(category: result.category)
-        }
-        .width(min: 132, ideal: 150)
-
-        TableColumn("Modified") { result in
-          Text(result.lastModified?.formatted(date: .abbreviated, time: .omitted) ?? "Unknown")
-            .foregroundStyle(.secondary)
-        }
-        .width(min: 88, ideal: 106)
-
-        TableColumn("Path") { result in
-          Text(result.path)
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
-            .help(result.path)
-        }
-
-        TableColumn("") { result in
-          Menu {
-            Button {
-              NSWorkspace.shared.activateFileViewerSelecting([
-                URL(fileURLWithPath: result.normalizedPath)
-              ])
-            } label: {
-              Label("Open in Finder", systemImage: "folder")
-            }
-
-            Button {
-              model.exclude(result)
-            } label: {
-              Label("Exclude from Future Scans", systemImage: "eye.slash")
-            }
-            .disabled(result.isExcluded)
-
-            if result.canDelete {
-              Divider()
-              Button(role: .destructive) {
-                Task { await model.cleanup(result) }
-              } label: {
-                Label("Move to Trash", systemImage: "trash")
-              }
-            }
-          } label: {
-            Image(systemName: "ellipsis.circle")
-          }
-          .menuStyle(.borderlessButton)
-          .help("Item actions")
-        }
-        .width(34)
       }
-    }
-  }
-
-  private func checkboxState(_ state: VisibleSelectionState) -> SelectionCheckbox.State {
-    switch state {
-    case .none: return .off
-    case .some: return .mixed
-    case .all: return .on
+      .padding(.vertical, 2)
     }
   }
 }
+
+// MARK: - Result Card Row
+
+struct ResultCardRow: View {
+  @EnvironmentObject private var model: AppModel
+  let result: ScanResult
+  var onToggle: () -> Void
+  var onDetail: () -> Void
+  @State private var isHovered = false
+
+  var body: some View {
+    HStack(spacing: 10) {
+      // Selection checkbox
+      SelectionCheckbox(
+        state: model.selection.contains(result.id) ? .on : .off,
+        isEnabled: result.canDelete && !result.isExcluded,
+        accessibilityLabel: model.selection.contains(result.id) ? "Deselect \(result.name)" : "Select \(result.name)"
+      ) { _ in onToggle() }
+
+      // Icon badge
+      Image(systemName: result.itemType == .folder ? "folder.fill" : "doc.fill")
+        .font(.system(size: 13))
+        .foregroundStyle(result.category.tintColor)
+        .frame(width: 28, height: 28)
+        .background(result.category.tintColor.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+
+      // Name + path
+      VStack(alignment: .leading, spacing: 1) {
+        Button(action: onDetail) {
+          Text(result.name)
+            .font(.system(.subheadline, design: .rounded).weight(.semibold))
+            .foregroundStyle(result.isExcluded ? BrandTheme.warmGray : BrandTheme.bark)
+            .lineLimit(1)
+        }.buttonStyle(.plain)
+
+        Text(result.path)
+          .font(.system(size: 10, design: .rounded))
+          .foregroundStyle(BrandTheme.warmGray)
+          .lineLimit(1)
+          .help(result.path)
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+
+      Spacer(minLength: 4)
+
+      // Metadata
+      Text(ByteCount.string(result.sizeBytes))
+        .font(.system(.subheadline, design: .rounded).monospacedDigit().weight(.medium))
+        .foregroundStyle(BrandTheme.bark)
+        .frame(width: 75, alignment: .trailing)
+
+      SafetyLabel(category: result.category)
+        .frame(width: 130, alignment: .leading)
+
+      Text(result.lastModified?.formatted(date: .abbreviated, time: .omitted) ?? "—")
+        .font(.system(size: 11, design: .rounded))
+        .foregroundStyle(BrandTheme.warmGray)
+        .frame(width: 80, alignment: .leading)
+
+      // Context menu
+      Menu {
+        Button { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: result.normalizedPath)]) }
+          label: { Label("Open in Finder", systemImage: "folder") }
+        Button { model.exclude(result) } label: { Label("Exclude", systemImage: "eye.slash") }
+          .disabled(result.isExcluded)
+        if result.canDelete {
+          Divider()
+          Button(role: .destructive) { Task { await model.cleanup(result) } }
+            label: { Label("Move to Trash", systemImage: "trash") }
+        }
+      } label: {
+        Image(systemName: "ellipsis")
+          .font(.system(size: 11, weight: .bold))
+          .foregroundStyle(BrandTheme.warmGray)
+          .frame(width: 22, height: 22)
+      }
+      .menuStyle(.borderlessButton)
+      .frame(width: 26)
+    }
+    .padding(.vertical, 8)
+    .padding(.horizontal, 12)
+    .background(
+      RoundedRectangle(cornerRadius: 10, style: .continuous)
+        .fill(model.selection.contains(result.id) ? BrandTheme.sage.opacity(0.10) : BrandTheme.clay)
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: 10, style: .continuous)
+        .stroke(
+          model.selection.contains(result.id) ? BrandTheme.sage.opacity(0.35) :
+          (isHovered ? BrandTheme.sage.opacity(0.18) : BrandTheme.hairline),
+          lineWidth: 1
+        )
+    )
+    .shadow(color: isHovered ? BrandTheme.sage.opacity(0.08) : .clear, radius: 4, y: 2)
+    .scaleEffect(isHovered ? 1.003 : 1.0)
+    .animation(.easeOut(duration: 0.12), value: isHovered)
+    .onHover { isHovered = $0 }
+    // Selected left accent bar
+    .overlay(alignment: .leading) {
+      if model.selection.contains(result.id) {
+        RoundedRectangle(cornerRadius: 2)
+          .fill(BrandTheme.sage)
+          .frame(width: 3, height: 22)
+          .padding(.leading, 3)
+      }
+    }
+  }
+
+}
+
+// MARK: - Safety Label
 
 struct SafetyLabel: View {
   var category: SafetyCategory
 
   var body: some View {
-    Label(label, systemImage: icon)
-      .font(.caption.weight(.semibold))
-      .foregroundStyle(color)
+    Label(category.label, systemImage: category.symbolName)
+      .font(.system(.caption, design: .rounded).weight(.semibold))
+      .foregroundStyle(category.tintColor)
       .lineLimit(1)
-      .accessibilityLabel(label)
-  }
-
-  private var label: String {
-    switch category {
-    case .safeToDelete: return "Safe to delete"
-    case .probablyUnused: return "Review recommended"
-    case .deleteIfAppUnused: return "App/tool dependent"
-    case .doNotBulkDelete: return "Do not bulk delete"
-    }
-  }
-
-  private var icon: String {
-    switch category {
-    case .safeToDelete: return "checkmark.circle.fill"
-    case .probablyUnused: return "questionmark.circle.fill"
-    case .deleteIfAppUnused: return "exclamationmark.triangle.fill"
-    case .doNotBulkDelete: return "hand.raised.fill"
-    }
-  }
-
-  private var color: Color {
-    switch category {
-    case .safeToDelete: return BrandTheme.freshLeaf
-    case .probablyUnused: return BrandTheme.sunToken
-    case .deleteIfAppUnused: return BrandTheme.actionCoral
-    case .doNotBulkDelete: return .secondary
-    }
+      .accessibilityLabel(category.label)
   }
 }

@@ -80,6 +80,7 @@ final class AppModel: ObservableObject {
 
   func startScan(mode: ScanMode) async {
     guard !isScanning else { return }
+    BrandTheme.triggerHaptic()
     isScanning = true
     streamedResults = []
     selection = []
@@ -106,6 +107,7 @@ final class AppModel: ObservableObject {
     }
     scanner = nil
     isScanning = false
+    BrandTheme.triggerHaptic()
   }
 
   func cancelScan() {
