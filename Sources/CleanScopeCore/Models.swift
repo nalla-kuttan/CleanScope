@@ -486,6 +486,31 @@ public struct Settings: Codable, Equatable, Sendable {
   public var saveScanHistory: Bool
   public var largeFileThresholdBytes: Int64
 
+  // Menu bar and alerts
+  public var showMenuBarExtra: Bool = false
+  public var openAtLogin: Bool = false
+  public var lowDiskAlertEnabled: Bool = true
+  public var lowDiskThresholdBytes: Int64 = 10_000_000_000
+  public var trashAlertEnabled: Bool = true
+  public var trashThresholdBytes: Int64 = 5_000_000_000
+  public var externalDriveAlertEnabled: Bool = true
+  public var externalDriveMountedNotice: Bool = false
+  public var memoryAlertEnabled: Bool = false
+  public var restartReminderEnabled: Bool = true
+  public var bluetoothBatteryAlertEnabled: Bool = true
+  public var hungAppMonitoringEnabled: Bool = false
+
+  // Cleanup options
+  public var allowSnapshotThinning: Bool = false
+  public var preselectSafeCaches: Bool = false
+  public var deleteImmediately: Bool = false
+
+  // Monitoring and protection
+  public var showSystemMonitors: Bool = true
+  public var experimentalTemperature: Bool = false
+  public var realTimeProtectionEnabled: Bool = false
+  public var trustedTeamIDs: [String] = []
+
   public static let `default` = Settings(
     scanHiddenFolders: true,
     scanDeveloperFolders: true,
@@ -496,6 +521,56 @@ public struct Settings: Codable, Equatable, Sendable {
     saveScanHistory: true,
     largeFileThresholdBytes: 500_000_000
   )
+}
+
+extension Settings {
+  private enum CodingKeys: String, CodingKey {
+    case scanHiddenFolders, scanDeveloperFolders, scanDownloads, scanAppSupport
+    case defaultDeletionMethod, showAdvancedCategories, saveScanHistory, largeFileThresholdBytes
+    case showMenuBarExtra, openAtLogin, lowDiskAlertEnabled, lowDiskThresholdBytes
+    case trashAlertEnabled, trashThresholdBytes, externalDriveAlertEnabled
+    case externalDriveMountedNotice, memoryAlertEnabled, restartReminderEnabled
+    case bluetoothBatteryAlertEnabled, hungAppMonitoringEnabled, allowSnapshotThinning
+    case preselectSafeCaches, deleteImmediately, showSystemMonitors, experimentalTemperature
+    case realTimeProtectionEnabled, trustedTeamIDs
+  }
+
+  /// Missing keys fall back to `Settings.default`, so settings saved by older versions load.
+  public init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    var s = Settings.default
+    func read<T: Decodable>(_ key: CodingKeys, _ value: inout T) throws {
+      if let decoded = try c.decodeIfPresent(T.self, forKey: key) { value = decoded }
+    }
+    try read(.scanHiddenFolders, &s.scanHiddenFolders)
+    try read(.scanDeveloperFolders, &s.scanDeveloperFolders)
+    try read(.scanDownloads, &s.scanDownloads)
+    try read(.scanAppSupport, &s.scanAppSupport)
+    try read(.defaultDeletionMethod, &s.defaultDeletionMethod)
+    try read(.showAdvancedCategories, &s.showAdvancedCategories)
+    try read(.saveScanHistory, &s.saveScanHistory)
+    try read(.largeFileThresholdBytes, &s.largeFileThresholdBytes)
+    try read(.showMenuBarExtra, &s.showMenuBarExtra)
+    try read(.openAtLogin, &s.openAtLogin)
+    try read(.lowDiskAlertEnabled, &s.lowDiskAlertEnabled)
+    try read(.lowDiskThresholdBytes, &s.lowDiskThresholdBytes)
+    try read(.trashAlertEnabled, &s.trashAlertEnabled)
+    try read(.trashThresholdBytes, &s.trashThresholdBytes)
+    try read(.externalDriveAlertEnabled, &s.externalDriveAlertEnabled)
+    try read(.externalDriveMountedNotice, &s.externalDriveMountedNotice)
+    try read(.memoryAlertEnabled, &s.memoryAlertEnabled)
+    try read(.restartReminderEnabled, &s.restartReminderEnabled)
+    try read(.bluetoothBatteryAlertEnabled, &s.bluetoothBatteryAlertEnabled)
+    try read(.hungAppMonitoringEnabled, &s.hungAppMonitoringEnabled)
+    try read(.allowSnapshotThinning, &s.allowSnapshotThinning)
+    try read(.preselectSafeCaches, &s.preselectSafeCaches)
+    try read(.deleteImmediately, &s.deleteImmediately)
+    try read(.showSystemMonitors, &s.showSystemMonitors)
+    try read(.experimentalTemperature, &s.experimentalTemperature)
+    try read(.realTimeProtectionEnabled, &s.realTimeProtectionEnabled)
+    try read(.trustedTeamIDs, &s.trustedTeamIDs)
+    self = s
+  }
 }
 
 extension ScanResult {
