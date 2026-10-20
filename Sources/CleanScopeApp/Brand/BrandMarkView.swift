@@ -6,7 +6,7 @@ struct BrandMarkView: View {
   var isDecorative = false
   /// 0 shows the lens alone; stages 1–3 add the stem, then each leaf.
   var growthStage = 3
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @EnvironmentObject private var motion: MotionPolicy
 
   var body: some View {
     ZStack {
@@ -49,7 +49,7 @@ struct BrandMarkView: View {
           .opacity(growthStage >= 3 ? 1 : 0)
       }
       .padding(field ? size * 0.1 : 0)
-      .animation(reduceMotion ? nil : .easeOut(duration: BrandTheme.motionDuration), value: growthStage)
+      .animation(motion.animation(.easeOut(duration: BrandTheme.motionDuration)), value: growthStage)
     }
     .frame(width: size, height: size)
     .accessibilityElement(children: .ignore)

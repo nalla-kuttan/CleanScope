@@ -5,7 +5,7 @@ import SwiftUI
 /// Treemap of the latest scan. Click a folder to drill in; the breadcrumb or ⌘[ goes back up.
 struct StorageMapView: View {
   @EnvironmentObject private var model: AppModel
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @EnvironmentObject private var motion: MotionPolicy
   @State private var trail: [String] = []
   @State private var hoveredID: String?
   @State private var showsList = false
@@ -56,7 +56,7 @@ struct StorageMapView: View {
     }
     .padding(24)
     .background(BrandTheme.surface)
-    .onChange(of: model.session?.id) { _ in trail = [] }
+    .onChange(of: model.session?.id) { trail = [] }
   }
 
   // MARK: - Header
@@ -154,7 +154,7 @@ struct StorageMapView: View {
           }
         }
       }
-      .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: trail)
+      .animation(motion.animation(.easeInOut(duration: 0.2)), value: trail)
     }
     .frame(minHeight: 360)
     .accessibilityElement(children: .contain)

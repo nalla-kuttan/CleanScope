@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
   name: "CleanScope",
-  platforms: [.macOS(.v13)],
+  platforms: [.macOS(.v14)],
   products: [
     .library(name: "CleanScopeCore", targets: ["CleanScopeCore"]),
     .executable(name: "CleanScopeApp", targets: ["CleanScopeApp"]),

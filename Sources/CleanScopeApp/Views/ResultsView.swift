@@ -71,7 +71,7 @@ struct ResultsView: View {
     #if DEBUG
       .onReceive(model.$debugDetail) { if let item = $0 { detail = item } else { detail = nil } }
     #endif
-    .onChange(of: rows.map(\.id)) { ids in
+    .onChange(of: rows.map(\.id)) { _, ids in
       if let rangeAnchorID, !ids.contains(rangeAnchorID) { self.rangeAnchorID = nil }
     }
   }

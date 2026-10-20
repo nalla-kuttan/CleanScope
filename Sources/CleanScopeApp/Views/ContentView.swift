@@ -1,9 +1,10 @@
+import AppKit
 import CleanScopeCore
 import SwiftUI
 
 struct ContentView: View {
   @EnvironmentObject private var model: AppModel
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @EnvironmentObject private var motion: MotionPolicy
 
   var body: some View {
     NavigationSplitView {
@@ -17,11 +18,12 @@ struct ContentView: View {
           if let undo = model.exclusionUndo {
             ExclusionUndoBar(undo: undo)
               .padding(16)
-              .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
+              .transition(motion.allowsTransitions ? .move(edge: .bottom).combined(with: .opacity) : .opacity)
           }
         }
-        .animation(BrandTheme.animation(reduceMotion), value: model.exclusionUndo?.id)
+        .animation(motion.animation(), value: model.exclusionUndo?.id)
     }
+    .background(WindowAccessor { motion.attach(to: $0) })
     #if DEBUG
       .task { await DebugSnapshot.run(model: model) }
     #endif
@@ -97,4 +99,19 @@ private struct ExclusionUndoBar: View {
     )
     .accessibilityElement(children: .contain)
   }
+}
+
+/// Hands the hosting `NSWindow` to `onWindow` once the view is in a window.
+private struct WindowAccessor: NSViewRepresentable {
+  var onWindow: (NSWindow) -> Void
+
+  func makeNSView(context: Context) -> NSView {
+    let view = NSView()
+    DispatchQueue.main.async { [weak view] in
+      if let window = view?.window { onWindow(window) }
+    }
+    return view
+  }
+
+  func updateNSView(_ nsView: NSView, context: Context) {}
 }

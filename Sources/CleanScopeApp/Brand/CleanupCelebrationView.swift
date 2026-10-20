@@ -4,13 +4,13 @@ import SwiftUI
 struct CleanupCelebrationView: View {
   var recoveredBytes: Int64
   var movedCount: Int
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @EnvironmentObject private var motion: MotionPolicy
   @State private var isVisible = false
 
   var body: some View {
     HStack(spacing: 18) {
       BrandMarkView(size: 56, field: true, isDecorative: true)
-        .scaleEffect(isVisible || reduceMotion ? 1 : 0.92)
+        .scaleEffect(isVisible || !motion.allowsTransitions ? 1 : 0.92)
         .opacity(isVisible ? 1 : 0)
 
       VStack(alignment: .leading, spacing: 4) {
@@ -36,7 +36,7 @@ struct CleanupCelebrationView: View {
     )
     .accessibilityElement(children: .combine)
     .onAppear {
-      withAnimation(BrandTheme.animation(reduceMotion)) { isVisible = true }
+      withAnimation(motion.animation()) { isVisible = true }
     }
   }
 }

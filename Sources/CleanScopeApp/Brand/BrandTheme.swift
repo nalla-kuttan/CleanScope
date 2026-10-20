@@ -41,10 +41,6 @@ enum BrandTheme {
     static let field = adaptive(light: 0xDFF2E8, dark: 0x173C33)
   }
 
-  static func animation(_ reduceMotion: Bool) -> Animation? {
-    reduceMotion ? nil : .easeOut(duration: motionDuration)
-  }
-
   private static func adaptive(
     light: UInt32, dark: UInt32, increasedLight: UInt32? = nil, increasedDark: UInt32? = nil
   ) -> Color {

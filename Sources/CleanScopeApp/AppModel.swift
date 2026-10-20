@@ -236,6 +236,7 @@ final class AppModel: ObservableObject {
   private let systemSpace = SystemSpaceService()
   let notifications: NotificationCoordinator
   let statusMonitor: StatusMonitor
+  let motion = MotionPolicy()
   let hungAppMonitor: HungAppMonitor
   let metrics = MetricsSampler()
   @Published private(set) var activeRules: ActiveRules

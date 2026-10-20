@@ -26,6 +26,7 @@ struct CleanScopeApp: App {
       ContentView()
         .environmentObject(model)
         .environmentObject(model.statusMonitor)
+        .environmentObject(model.motion)
         .tint(BrandTheme.accent)
         .preferredColorScheme(previewColorScheme)
         .frame(minWidth: 820, minHeight: 560)
@@ -52,6 +53,7 @@ struct CleanScopeApp: App {
       SettingsView()
         .environmentObject(model)
         .environmentObject(model.statusMonitor)
+        .environmentObject(model.motion)
         .tint(BrandTheme.accent)
         .preferredColorScheme(previewColorScheme)
         .frame(width: 520, height: 620)
@@ -61,6 +63,7 @@ struct CleanScopeApp: App {
       MenuBarContentView()
         .environmentObject(model)
         .environmentObject(model.statusMonitor)
+        .environmentObject(model.motion)
     } label: {
       Image(systemName: "leaf.circle")
         .accessibilityLabel("CleanScope")
