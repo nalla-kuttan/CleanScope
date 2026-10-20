@@ -98,6 +98,7 @@ public actor ScannerService {
     paths: [String],
     mode: ScanMode,
     settings: Settings,
+    onProgress: @escaping @Sendable (_ completed: Int, _ total: Int) -> Void = { _, _ in },
     onResult: @Sendable (ScanResult) -> Void
   ) async -> ScanSession {
     cancellationState.reset()
@@ -105,7 +106,7 @@ public actor ScannerService {
     let roots = paths.map { URL(fileURLWithPath: $0).standardizedFileURL }
 
     let outcome = await withoutActuallyEscaping(onResult) { emit in
-      await scanRoots(roots, settings: settings, onResult: emit)
+      await scanRoots(roots, settings: settings, onProgress: onProgress, onResult: emit)
     }
 
     var session = ScanSession(
@@ -139,6 +140,7 @@ public actor ScannerService {
   private func scanRoots(
     _ roots: [URL],
     settings: Settings,
+    onProgress: @Sendable (_ completed: Int, _ total: Int) -> Void,
     onResult: @escaping @Sendable (ScanResult) -> Void
   ) async -> Outcome {
     let walker = TreeWalker(
@@ -196,6 +198,19 @@ public actor ScannerService {
       }
     }
 
+    // Progress counts every top-level child, plus one for each root that has none. The total is
+    // fixed before any work is dispatched, and `advance` is only ever called from this task, so
+    // reports are ordered and strictly increasing.
+    let childlessRoots = rootVisits.count + openFolders.values.filter { $0.children.isEmpty }.count
+    let total = items.count + childlessRoots
+    var completedItems = 0
+    func advance() {
+      completedItems += 1
+      guard !cancellationState.isCancelled else { return }
+      onProgress(completedItems, total)
+    }
+    for _ in 0..<childlessRoots { advance() }
+
     var childVisits: [Int: [Int: TreeWalker.Visit]] = [:]
     await withTaskGroup(of: (Int, Int, TreeWalker.Visit).self) { group in
       var pending = items.makeIterator()
@@ -207,6 +222,7 @@ public actor ScannerService {
       }
       while let (rootIndex, childIndex, visit) = await group.next() {
         childVisits[rootIndex, default: [:]][childIndex] = visit
+        advance()
         if let item = pending.next() {
           group.addTask {
             (item.rootIndex, item.childIndex, walker.visit(item.url, depth: 1, root: item.root))

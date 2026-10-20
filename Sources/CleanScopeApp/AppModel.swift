@@ -205,6 +205,11 @@ final class AppModel: ObservableObject {
   @Published var selection: Set<String> = []
   @Published var cleanupSession: CleanupSession?
   @Published var isScanning = false
+  /// Fraction of top-level scan items finished: 0 at scan start, 1 once a scan completes. A
+  /// cancelled scan leaves it where it stopped.
+  @Published private(set) var scanProgress: Double = 0
+  /// Category of the last result in the most recently flushed batch; nil until one arrives.
+  @Published private(set) var latestStreamedCategory: SafetyCategory?
   @Published var permissionSummary: PermissionSummary?
   @Published var disk: Disk?
   @Published var exclusions: [ExclusionRule] = []
@@ -575,6 +580,8 @@ final class AppModel: ObservableObject {
     guard !isScanning else { return }
     let scanSettings = scanSettings ?? settings
     isScanning = true
+    scanProgress = 0
+    latestStreamedCategory = nil
     streamedResults = []
     pendingResults = []
     selection = []
@@ -585,7 +592,16 @@ final class AppModel: ObservableObject {
     )
     scanner = activeScanner
     let rules = exclusions
-    var completed = await activeScanner.scan(paths: paths, mode: mode, settings: scanSettings) {
+    var completed = await activeScanner.scan(
+      paths: paths, mode: mode, settings: scanSettings,
+      onProgress: { [weak self] done, total in
+        Task { @MainActor in
+          guard let self, self.isScanning else { return }
+          // Progress only moves forward; hops can arrive out of order.
+          self.scanProgress = max(self.scanProgress, Double(done) / Double(max(total, 1)))
+        }
+      }
+    ) {
       [weak self] (result: ScanResult) in
       Task { @MainActor in
         guard let self, self.isScanning else { return }
@@ -617,6 +633,7 @@ final class AppModel: ObservableObject {
       }
     }
     scanner = nil
+    if completed.status == .completed { scanProgress = 1 }
     isScanning = false
   }
 
@@ -652,10 +669,25 @@ final class AppModel: ObservableObject {
       try? await Task.sleep(nanoseconds: 150_000_000)
       flushScheduled = false
       guard isScanning, !pendingResults.isEmpty else { return }
+      latestStreamedCategory = pendingResults.last?.category
       streamedResults.append(contentsOf: pendingResults)
       pendingResults = []
     }
   }
+
+  #if DEBUG
+    /// Puts the model into a mid-scan state from the saved scan without scanning anything:
+    /// the first `progress` fraction of its results are streamed in.
+    func debugSimulateScan(progress: Double) {
+      let fraction = min(max(progress, 0), 1)
+      let all = session?.results ?? []
+      let shown = Array(all.prefix(Int((Double(all.count) * fraction).rounded(.down))))
+      isScanning = true
+      scanProgress = fraction
+      streamedResults = shown.map { ExclusionRule.applying(exclusions, to: $0) }
+      latestStreamedCategory = shown.last?.category
+    }
+  #endif
 
   // MARK: - System space
 

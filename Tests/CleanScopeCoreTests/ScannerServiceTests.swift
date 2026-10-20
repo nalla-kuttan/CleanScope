@@ -189,6 +189,79 @@ import Testing
     #expect(session.status == .completed)
   }
 
+  /// Collects `(completed, total)` pairs from the `@Sendable` progress callback.
+  private final class ProgressLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [(Int, Int)] = []
+    func append(_ completed: Int, _ total: Int) {
+      lock.withLock { storage.append((completed, total)) }
+    }
+    var calls: [(Int, Int)] { lock.withLock { storage } }
+  }
+
+  /// 3 roots x 4 child folders, each holding one small file.
+  private func makeProgressRoots() throws -> [URL] {
+    try (0..<3).map { rootIndex in
+      let root = try makeTempDirectory().appendingPathComponent("root\(rootIndex)")
+      for child in 0..<4 {
+        let folder = root.appendingPathComponent("child\(child)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data(repeating: 1, count: 64).write(to: folder.appendingPathComponent("a.txt"))
+      }
+      return root
+    }
+  }
+
+  @Test func progressReachesCompletionOnce() async throws {
+    let roots = try makeProgressRoots()
+    let log = ProgressLog()
+    let scanner = ScannerService(classifier: ClassificationService(), largeFileThresholdBytes: 1)
+    _ = await scanner.scan(
+      paths: roots.map(\.path), mode: .limited, settings: .default,
+      onProgress: { log.append($0, $1) }
+    ) { _ in }
+
+    let calls = log.calls
+    #expect(calls.count == 12)
+    #expect(calls.last?.0 == 12 && calls.last?.1 == 12)
+    #expect(calls.filter { $0.0 == $0.1 }.count == 1)
+    #expect(calls.allSatisfy { $0.1 == 12 })
+    #expect(zip(calls, calls.dropFirst()).allSatisfy { $0.0 < $1.0 })
+  }
+
+  @Test func rootWithoutChildrenCountsAsOneItem() async throws {
+    let roots = try makeProgressRoots()
+    let empty = try makeTempDirectory().appendingPathComponent("empty")
+    try FileManager.default.createDirectory(at: empty, withIntermediateDirectories: true)
+    let log = ProgressLog()
+    let scanner = ScannerService(classifier: ClassificationService(), largeFileThresholdBytes: 1)
+    _ = await scanner.scan(
+      paths: roots.map(\.path) + [empty.path], mode: .limited, settings: .default,
+      onProgress: { log.append($0, $1) }
+    ) { _ in }
+
+    #expect(log.calls.last?.0 == 13 && log.calls.last?.1 == 13)
+  }
+
+  @Test func cancellingStopsProgressCallbacks() async throws {
+    let roots = try makeProgressRoots()
+    let log = ProgressLog()
+    let scanner = ScannerService(
+      classifier: ClassificationService(), largeFileThresholdBytes: 1, maxConcurrency: 1)
+    _ = await scanner.scan(
+      paths: roots.map(\.path), mode: .limited, settings: .default,
+      onProgress: {
+        log.append($0, $1)
+        scanner.cancel()
+      }
+    ) { _ in }
+
+    let countAtReturn = log.calls.count
+    #expect(countAtReturn >= 1 && countAtReturn < 12)
+    try await Task.sleep(nanoseconds: 100_000_000)
+    #expect(log.calls.count == countAtReturn)
+  }
+
   private func makeFixtureTree() throws -> URL {
     let root = try makeTempDirectory()
     let caches = root.appendingPathComponent("Library/Caches")

@@ -5,7 +5,8 @@
 
   /// Debug-only visual verification: `CleanScopeApp --snapshot-dir <dir> [--dark-preview]`
   /// visits every destination, writes a PNG of the window for each, and quits. Add
-  /// `--snapshot-empty` to start without the saved scan. It never scans or cleans.
+  /// `--snapshot-empty` to start without the saved scan. Add `--snapshot-scan-progress <0…1>`
+  /// to capture a simulated mid-scan state built from the saved scan. It never scans or cleans.
   @MainActor
   enum DebugSnapshot {
     static var directory: URL? {
@@ -23,6 +24,15 @@
       ProcessInfo.processInfo.arguments.contains("--snapshot-empty")
     }
 
+    /// The simulated mid-scan progress (0…1) requested by `--snapshot-scan-progress`, if any.
+    static var simulatedScanProgress: Double? {
+      let args = ProcessInfo.processInfo.arguments
+      guard let index = args.firstIndex(of: "--snapshot-scan-progress"), index + 1 < args.count,
+        let value = Double(args[index + 1])
+      else { return nil }
+      return min(max(value, 0), 1)
+    }
+
     static func run(model: AppModel) async {
       guard let directory else { return }
       try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -30,6 +40,7 @@
         ProcessInfo.processInfo.arguments.contains("--dark-preview") ? "dark" : "light"
       let prefix = startsEmpty ? "empty-" : ""
       try? await Task.sleep(nanoseconds: 1_500_000_000)
+      if let progress = simulatedScanProgress { model.debugSimulateScan(progress: progress) }
       NSApp.windows.first(where: \.isVisible)?.setContentSize(NSSize(width: 1180, height: 760))
 
       captureSidebar(directory.appendingPathComponent("\(prefix)sidebar-\(appearance).png"))
