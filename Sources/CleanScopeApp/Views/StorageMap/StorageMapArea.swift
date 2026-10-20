@@ -47,7 +47,7 @@ final class StorageMapCache {
         guard let tile = byID[placed.id] else { return nil }
         return MapTile(
           id: tile.id, name: tile.node.name, bytes: tile.node.sizeBytes, tone: tile.tone,
-          rect: placed.rect, isSelectable: tile.isSelectable)
+          rect: placed.rect, isSelectable: tile.isSelectable, isDrillable: tile.canDrill)
       }
     return layout
   }

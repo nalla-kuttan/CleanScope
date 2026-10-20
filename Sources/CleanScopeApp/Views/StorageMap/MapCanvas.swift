@@ -4,6 +4,8 @@ import SwiftUI
 /// The storage map drawn in one `Canvas`. Selected tiles lift with a shadow and a check badge.
 /// Pointer: hover highlights, click focuses and drills. Keyboard: arrows move focus in reading
 /// order, Space toggles selection, Return drills in. VoiceOver sees one button per tile.
+/// The Sprout Lens magnifies the tile under the pointer, else the focused tile, else it rests on
+/// the largest selectable tile.
 struct MapCanvas: View {
   var tiles: [MapTile]
   /// Ids of the tiles that are selected.
@@ -15,7 +17,9 @@ struct MapCanvas: View {
   var onHover: (String?) -> Void = { _ in }
 
   @State private var hoveredID: String?
+  @State private var pointer: CGPoint?
   @FocusState private var isFocused: Bool
+  @EnvironmentObject private var motion: MotionPolicy
   @Environment(\.colorScheme) private var colorScheme
   @Environment(\.colorSchemeContrast) private var contrast
 
@@ -25,19 +29,30 @@ struct MapCanvas: View {
 
   var body: some View {
     ZStack(alignment: .topLeading) {
-      MapTileLayer(tiles: tiles, selection: selection, colors: colors) { tile in
-        if tile.isSelectable { onToggle(tile.id) } else { onDrill(tile.id) }
-      }
+      MapTileLayer(
+        tiles: tiles, selection: selection, colors: colors,
+        onActivate: { tile in
+          if tile.isSelectable { onToggle(tile.id) } else { onDrill(tile.id) }
+        },
+        onOpen: { onDrill($0.id) }
+      )
       .equatable()
       highlights
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+      GeometryReader { proxy in lens(in: proxy.size) }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
     .contentShape(Rectangle())
     .onContinuousHover { phase in
       switch phase {
-      case .active(let point): setHovered(tile(at: point)?.id)
-      case .ended: setHovered(nil)
+      case .active(let point):
+        pointer = point
+        setHovered(tile(at: point)?.id)
+      case .ended:
+        pointer = nil
+        setHovered(nil)
       }
     }
     .gesture(
@@ -85,8 +100,42 @@ struct MapCanvas: View {
     onHover(id)
   }
 
+  /// Selected tiles are drawn 4 pt higher, so their lifted frame wins over the tile they
+  /// overlap; anything else falls back to the laid-out rects.
   private func tile(at point: CGPoint) -> MapTile? {
-    tiles.first { $0.rect.contains(point) }
+    if !selection.isEmpty,
+      let lifted = tiles.first(where: {
+        selection.contains($0.id) && MapTileStyle.frame(of: $0, selected: true).contains(point)
+      })
+    {
+      return lifted
+    }
+    return tiles.first { $0.rect.contains(point) }
+  }
+
+  // MARK: - Lens
+
+  /// The lens follows the pointer, else the keyboard-focused tile, else rests on the largest
+  /// selectable tile. It eases to its target unless Reduce Motion is on.
+  @ViewBuilder
+  private func lens(in size: CGSize) -> some View {
+    if let target = lensTarget, size.width > 0, size.height > 0 {
+      let radius = LensGeometry.radius(forWidth: size.width)
+      let center = LensGeometry.clamp(target, radius: radius, in: size)
+      LensOverlay(
+        center: center, radius: radius, zoom: LensGeometry.zoom, tile: tile(at: center),
+        tiles: tiles, selection: selection, colors: colors
+      )
+      .animation(motion.animation(.easeOut(duration: 0.12)), value: center)
+    }
+  }
+
+  private var lensTarget: CGPoint? {
+    if let pointer { return pointer }
+    let focused = isFocused ? tiles.first(where: { $0.id == focusedID }) : nil
+    guard let tile = focused ?? LensGeometry.restingTile(in: tiles) else { return nil }
+    let frame = MapTileStyle.frame(of: tile, selected: selection.contains(tile.id))
+    return CGPoint(x: frame.midX, y: frame.midY)
   }
 
   // MARK: - Keyboard

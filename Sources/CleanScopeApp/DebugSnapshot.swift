@@ -126,7 +126,8 @@
 
   /// Debug-only Storage Map fixture and benchmark. `--map-fixture <N>` replaces the session with
   /// N sibling items (mixed categories, a few preselected). `--map-benchmark` renders all N as
-  /// one `MapCanvas` offscreen 300 times at 1180 × 700, prints the mean, and quits.
+  /// one `MapCanvas` offscreen 300 times at 1180 × 700, prints the mean, and quits. With no
+  /// pointer or focus the lens is drawn at its fixed resting centre on every frame.
   @MainActor
   enum MapFixture {
     static var requestedCount: Int? {
@@ -223,6 +224,7 @@
           onToggle: { _ in }, onDrill: { _ in }
         )
         .frame(width: size.width, height: size.height)
+        .environmentObject(model.motion)
         let renderer = ImageRenderer(content: canvas)
         renderer.scale = 2
         return renderer
@@ -235,6 +237,7 @@
         let rep = NSBitmapImageRep(cgImage: image)
         try? rep.representation(using: .png, properties: [:])?
           .write(to: directory.appendingPathComponent("map-benchmark.png"))
+        saveLensAlignmentCheck(tiles: tiles, selection: selected, size: size, to: directory)
       } else {
         _ = render()
       }
@@ -250,9 +253,46 @@
       let sorted = durations.sorted()
       let p95 = sorted[Int(Double(frames) * 0.95) - 1]
       print("map-benchmark: \(tiles.count) tiles, \(selected.count) selected")
+      if let rest = LensGeometry.restingTile(in: tiles) {
+        let radius = LensGeometry.radius(forWidth: size.width)
+        let frame = MapTileStyle.frame(of: rest, selected: selected.contains(rest.id))
+        let center = LensGeometry.clamp(
+          CGPoint(x: frame.midX, y: frame.midY), radius: radius, in: size)
+        print(
+          String(
+            format: "map-benchmark: lens on at (%.0f, %.0f), radius %.0f, shader %@",
+            center.x, center.y, radius, LensShader.isAvailable ? "on" : "off (SwiftUI glass)"))
+      } else {
+        print("map-benchmark: lens off (no tiles)")
+      }
       print("map-benchmark: \(rendered)/\(frames) frames rendered")
       print(String(format: "map-benchmark: p95 %.2f ms, max %.2f ms", p95, sorted.last ?? 0))
       print(String(format: "map-benchmark: mean %.2f ms/frame", mean))
+    }
+
+    /// Saves `map-lens-check.png`: the lens pinned on the corner of the resting tile, where
+    /// tile edges cross, so the magnified content can be checked against the ring's centre.
+    private static func saveLensAlignmentCheck(
+      tiles: [MapTile], selection: Set<String>, size: CGSize, to directory: URL
+    ) {
+      guard let rest = LensGeometry.restingTile(in: tiles) else { return }
+      let colors = MapColors(isDark: false, isIncreased: false)
+      let radius = LensGeometry.radius(forWidth: size.width)
+      let corner = LensGeometry.clamp(
+        CGPoint(x: rest.rect.maxX, y: rest.rect.maxY), radius: radius, in: size)
+      let view = ZStack(alignment: .topLeading) {
+        MapTileLayer(tiles: tiles, selection: selection, colors: colors)
+        LensOverlay(
+          center: corner, radius: radius, tile: rest, tiles: tiles, selection: selection,
+          colors: colors)
+      }
+      .frame(width: size.width, height: size.height)
+      let renderer = ImageRenderer(content: view)
+      renderer.scale = 2
+      guard let image = renderer.cgImage else { return }
+      try? NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])?
+        .write(to: directory.appendingPathComponent("map-lens-check.png"))
+      print(String(format: "map-benchmark: lens check at (%.0f, %.0f)", corner.x, corner.y))
     }
   }
 #endif

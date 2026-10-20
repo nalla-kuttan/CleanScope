@@ -29,6 +29,20 @@ mkdir -p "$APP_MACOS" "$APP_RESOURCES"
 cp "$BUILD_BINARY" "$APP_BINARY"
 cp "$APP_ICON" "$APP_RESOURCES/CleanScope.icns"
 cp -R "$RESOURCE_BUNDLE" "$APP_RESOURCES/"
+
+# SwiftPM's command-line build does not compile Metal, so build the Sprout Lens shader into the
+# staged resource bundle (SwiftPM bundles are flat: resources sit at the bundle root). Without
+# the Metal toolchain the app draws the lens without refraction, so this step is optional.
+LENS_SOURCE="$ROOT_DIR/Sources/CleanScopeApp/Resources/Lens.metal"
+LENS_BUNDLE="$APP_RESOURCES/CleanScope_CleanScopeApp.bundle"
+if xcrun -sdk macosx -f metal >/dev/null 2>&1 && xcrun -sdk macosx -f metallib >/dev/null 2>&1; then
+  LENS_BUILD="$ROOT_DIR/.build/lens-metal"
+  mkdir -p "$LENS_BUILD"
+  xcrun -sdk macosx metal -c "$LENS_SOURCE" -o "$LENS_BUILD/Lens.air"
+  xcrun -sdk macosx metallib "$LENS_BUILD/Lens.air" -o "$LENS_BUNDLE/default.metallib"
+else
+  echo "note: Metal toolchain not found; the lens shader is skipped (SwiftUI glass fallback)." >&2
+fi
 chmod +x "$APP_BINARY"
 
 cat >"$INFO_PLIST" <<PLIST

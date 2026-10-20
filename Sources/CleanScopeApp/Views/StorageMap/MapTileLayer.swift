@@ -9,6 +9,8 @@ struct MapTile: Identifiable, Equatable {
   let tone: MapTone
   let rect: CGRect
   let isSelectable: Bool
+  /// Whether the tile opens to show its contents ("Open" in VoiceOver for selectable tiles).
+  var isDrillable = false
 }
 
 /// Drawing values shared by the tile layer and the hover/focus overlay.
@@ -78,23 +80,40 @@ struct MapTileLayer: View, Equatable {
   let tiles: [MapTile]
   let selection: Set<String>
   let colors: MapColors
+  /// Maps tile coordinates into the canvas. The lens passes a magnifying transform.
+  var transform: CGAffineTransform = .identity
   /// VoiceOver's action for a tile. Not compared: it only forwards to the parent's handlers.
   var onActivate: (MapTile) -> Void = { _ in }
+  /// VoiceOver's "Open" action for selectable tiles that can be drilled into.
+  var onOpen: (MapTile) -> Void = { _ in }
 
   static func == (lhs: MapTileLayer, rhs: MapTileLayer) -> Bool {
-    lhs.colors == rhs.colors && lhs.selection == rhs.selection && lhs.tiles == rhs.tiles
+    lhs.colors == rhs.colors && lhs.transform == rhs.transform
+      && lhs.selection == rhs.selection && lhs.tiles == rhs.tiles
   }
 
   var body: some View {
-    Canvas { context, _ in draw(in: &context) }
-      .drawingGroup()
-      .accessibilityRepresentation {
-        VStack {
-          ForEach(tiles) { tile in
-            Button(accessibilityLabel(for: tile)) { onActivate(tile) }
+    Canvas { context, _ in
+      context.concatenate(transform)
+      draw(in: &context)
+    }
+    .drawingGroup()
+    .accessibilityRepresentation {
+      VStack {
+        ForEach(tiles) { tile in
+          // A selectable tile's button toggles it, so opening it is a named action.
+          if tile.isSelectable && tile.isDrillable {
+            tileButton(tile).accessibilityAction(named: "Open") { onOpen(tile) }
+          } else {
+            tileButton(tile)
           }
         }
       }
+    }
+  }
+
+  private func tileButton(_ tile: MapTile) -> some View {
+    Button(accessibilityLabel(for: tile)) { onActivate(tile) }
   }
 
   /// "Name, 1.2 GB, Safe to delete, selected"; selectable tiles also say whether they are selected.

@@ -13,6 +13,8 @@ let package = Package(
     .executableTarget(
       name: "CleanScopeApp",
       dependencies: ["CleanScopeCore"],
+      // Lens.metal is compiled into the bundle's default.metallib by script/build_and_run.sh.
+      exclude: ["Resources/Lens.metal"],
       resources: [.process("Resources")]
     ),
     .testTarget(
