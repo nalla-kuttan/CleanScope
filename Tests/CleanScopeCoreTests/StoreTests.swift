@@ -115,3 +115,40 @@ import Testing
     #expect(!rule.matches(path: "/Users/me/file.zip/child"))
   }
 }
+
+@Suite struct CleanupLogStoreTests {
+  private func makeStore() throws -> CleanupLogStore {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    return CleanupLogStore(fileURL: directory.appendingPathComponent("cleanup-log.json"))
+  }
+
+  @Test func cleanupLogRoundTripsNewestFirst() throws {
+    let store = try makeStore()
+    let base = Date(timeIntervalSince1970: 1_700_000_000)
+    let entries = (0..<3).map {
+      CleanupLogEntry(completedAt: base.addingTimeInterval(Double($0) * 60), recoveredBytes: Int64($0 + 1) * 1_000)
+    }
+    for entry in entries { try store.append(entry) }
+
+    #expect(try store.load() == entries.reversed())
+  }
+
+  @Test func cleanupLogKeepsFifty() throws {
+    let store = try makeStore()
+    let base = Date(timeIntervalSince1970: 1_700_000_000)
+    let entries = (0..<55).map {
+      CleanupLogEntry(completedAt: base.addingTimeInterval(Double($0) * 60), recoveredBytes: Int64($0))
+    }
+    for entry in entries { try store.append(entry) }
+
+    let loaded = try store.load()
+    #expect(loaded.count == 50)
+    #expect(loaded.first == entries.last)
+    #expect(loaded.last == entries[5])
+  }
+
+  @Test func missingCleanupLogLoadsEmpty() throws {
+    #expect(try makeStore().load().isEmpty)
+  }
+}

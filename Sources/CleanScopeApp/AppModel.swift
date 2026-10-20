@@ -229,6 +229,11 @@ final class AppModel: ObservableObject {
   private let permissionService: PermissionService
   private let deletionService: DeletionService
   private let exclusionStore: ExclusionStore
+  private let cleanupLogStore: CleanupLogStore
+  /// Confirmed cleanups, newest first.
+  @Published private(set) var cleanupLog: [CleanupLogEntry]
+  /// When the app first ran on this Mac; anchors the terrarium's age.
+  let firstLaunchDate: Date
   private var scanner: ScannerService?
   private var pendingResults: [ScanResult] = []
   private var flushScheduled = false
@@ -260,13 +265,24 @@ final class AppModel: ObservableObject {
     repository: ScanRepository = ScanRepository(),
     permissionService: PermissionService = PermissionService(),
     deletionService: DeletionService = DeletionService(privileged: AppleScriptPrivilegedRunner()),
-    exclusionStore: ExclusionStore = ExclusionStore()
+    exclusionStore: ExclusionStore = ExclusionStore(),
+    cleanupLogStore: CleanupLogStore = CleanupLogStore()
   ) {
     self.settingsStore = settingsStore
     self.repository = repository
     self.permissionService = permissionService
     self.deletionService = deletionService
     self.exclusionStore = exclusionStore
+    self.cleanupLogStore = cleanupLogStore
+    cleanupLog = (try? cleanupLogStore.load()) ?? []
+    let firstLaunchKey = "firstLaunchDate"
+    if let stored = UserDefaults.standard.object(forKey: firstLaunchKey) as? Date {
+      firstLaunchDate = stored
+    } else {
+      let now = Date()
+      UserDefaults.standard.set(now, forKey: firstLaunchKey)
+      firstLaunchDate = now
+    }
     let loadedSettings = (try? settingsStore.load()) ?? .default
     settings = loadedSettings
     activeRules = RuleRepository().loadActive()
@@ -709,6 +725,16 @@ final class AppModel: ObservableObject {
     guard !plan.items.isEmpty else { return }
     cleanupSession = await deletionService.cleanup(
       selected: plan.items, method: method ?? cleanupMethod)
+    if let session = cleanupSession, !session.deletedItems.isEmpty {
+      do {
+        try cleanupLogStore.append(
+          CleanupLogEntry(
+            completedAt: session.completedAt ?? Date(), recoveredBytes: session.recoveredBytes))
+      } catch {
+        report("Couldn't record this cleanup", error)
+      }
+      cleanupLog = (try? cleanupLogStore.load()) ?? cleanupLog
+    }
     selection = plan.remainingSelection
     refreshDisk()
     destination = .lastCleanup

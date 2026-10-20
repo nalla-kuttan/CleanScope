@@ -15,7 +15,9 @@ struct CleanScopeApp: App {
           .appendingPathComponent("CleanScopeSnapshot-\(UUID().uuidString)")
         return AppModel(
           repository: ScanRepository(fileURL: scratch.appendingPathComponent("latest.json")),
-          exclusionStore: ExclusionStore(fileURL: scratch.appendingPathComponent("exclusions.json")))
+          exclusionStore: ExclusionStore(fileURL: scratch.appendingPathComponent("exclusions.json")),
+          cleanupLogStore: CleanupLogStore(
+            fileURL: scratch.appendingPathComponent("cleanup-log.json")))
       }
     #endif
     return AppModel()
