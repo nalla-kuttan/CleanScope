@@ -77,6 +77,8 @@ struct ContentView: View {
       LoginItemsView()
     case .backgroundItems:
       BackgroundItemsView()
+    case .memory:
+      MemoryView()
     case .cleanupHistory:
       CleanupReportView()
     case .settings:
