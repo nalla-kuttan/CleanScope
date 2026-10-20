@@ -1,0 +1,100 @@
+import Foundation
+import Testing
+
+@testable import CleanScopeCore
+
+@Suite struct JunkRuleTests {
+  let service = ClassificationService(appName: { $0 == "com.apple.mail" ? "Mail" : nil })
+
+  private func classify(_ path: String, _ type: ItemType = .folder) -> ScanResult {
+    service.classify(ClassifiedItemInput(path: path, sizeBytes: 100, itemType: type))
+  }
+
+  @Test func chromiumCacheFoldersAreSafeWithOwner() {
+    for name in ["Cache", "Code Cache", "GPUCache", "DawnCache", "DawnGraphiteCache"] {
+      let result = classify("/Users/me/Library/Application Support/Slack/\(name)")
+      #expect(result.category == .safeToDelete, Comment(rawValue: name))
+      #expect(result.ownerApp == "Slack", Comment(rawValue: name))
+      #expect(result.ruleId == "safe.chromium-caches")
+    }
+  }
+
+  @Test func chromiumUserStateIsNeverSafe() {
+    let paths = [
+      "/Users/me/Library/Application Support/Slack/IndexedDB",
+      "/Users/me/Library/Application Support/Slack/Local Storage",
+      "/Users/me/Library/Application Support/Slack/Service Worker/CacheStorage/Cache",
+      "/Users/me/Library/Application Support/Slack/databases/Cache",
+      "/Users/me/Library/Application Support/Google/Chrome/Default/Cache",
+    ]
+    for path in paths {
+      #expect(classify(path).category != .safeToDelete, Comment(rawValue: path))
+    }
+    #expect(
+      classify("/Users/me/Library/Application Support/Google/Chrome/Default/Cache").category
+        == .doNotBulkDelete)
+  }
+
+  @Test func sandboxedChromiumCacheIsSafe() {
+    let result = classify(
+      "/Users/me/Library/Containers/com.tinyspeck.slackmacgap/Data/Library/Application Support/Slack/Cache"
+    )
+    #expect(result.category == .safeToDelete)
+  }
+
+  @Test func knownAppMediaCaches() {
+    let spotify = classify(
+      "/Users/me/Library/Application Support/Spotify/PersistentCache/Storage")
+    #expect(spotify.category == .safeToDelete)
+    #expect(spotify.ownerApp == "Spotify")
+
+    let adobe = classify(
+      "/Users/me/Library/Application Support/Adobe/Common/Media Cache Files")
+    #expect(adobe.category == .safeToDelete)
+    #expect(adobe.ownerApp == "Adobe")
+
+    let telegram = classify(
+      "/Users/me/Library/Application Support/Telegram Desktop/tdata/user_data")
+    #expect(telegram.category == .probablyUnused)
+    #expect(telegram.confidence == .medium)
+    #expect(telegram.ownerApp == "Telegram")
+  }
+
+  @Test func containerCacheFolderIsSafeAndNamedAfterApp() {
+    let mail = classify("/Users/me/Library/Containers/com.apple.mail/Data/Library/Caches")
+    #expect(mail.category == .safeToDelete)
+    #expect(mail.name == "Mail cache (com.apple.mail)")
+    #expect(mail.ownerApp == "Mail")
+
+    let unknown = classify("/Users/me/Library/Containers/x/Data/Library/Caches")
+    #expect(unknown.category == .safeToDelete)
+    #expect(unknown.ownerApp == "x")
+    #expect(unknown.name == "x cache (x)")
+  }
+
+  @Test func containerUserDataIsNeverSafe() {
+    #expect(
+      classify("/Users/me/Library/Containers/x/Data/Documents/file", .file).category
+        != .safeToDelete)
+    #expect(
+      classify("/Users/me/Library/Containers/x/Data/Library/Application Support/db", .file)
+        .category != .safeToDelete)
+  }
+
+  @Test func systemLogs() {
+    #expect(classify("/private/var/log/system.log.0.gz", .file).category == .safeToDelete)
+    #expect(classify("/private/var/log/wifi.log.3.bz2", .file).category == .safeToDelete)
+    let live = classify("/private/var/log/system.log", .file)
+    #expect(live.category == .probablyUnused)
+    #expect(live.confidence == .low)
+    #expect(
+      classify("/Users/me/Library/Logs/DiagnosticReports/a.ips", .file).category
+        == .safeToDelete)
+    #expect(classify("/Library/Logs/DiagnosticReports", .folder).category == .safeToDelete)
+  }
+
+  @Test func temporaryFoldersMatchAfterPathNormalization() {
+    #expect(
+      classify("/private/var/folders/ab/xyz/C/com.example").category == .safeToDelete)
+  }
+}

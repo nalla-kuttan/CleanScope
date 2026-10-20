@@ -1,5 +1,9 @@
 import Foundation
 
+#if canImport(AppKit)
+  import AppKit
+#endif
+
 public struct ClassifiedItemInput: Sendable {
   public var path: String
   public var sizeBytes: Int64
@@ -47,16 +51,55 @@ public struct ClassificationService: Sendable {
     var now: Date
   }
 
+  /// Turns a bundle identifier into a display name, or nil when the app is unknown.
+  public typealias AppNameResolver = @Sendable (_ bundleIdentifier: String) -> String?
+
   private let now: @Sendable () -> Date
+  private let appName: AppNameResolver
   public let rules: [ClassificationRule]
 
   public init(
     rules: [ClassificationRule] = ClassificationService.builtInRules,
+    appName: @escaping AppNameResolver = ClassificationService.installedAppName,
     now: @escaping @Sendable () -> Date = { Date() }
   ) {
     self.rules = rules
+    self.appName = appName
     self.now = now
   }
+
+  public static let installedAppName: AppNameResolver = { bundleIdentifier in
+    #if canImport(AppKit)
+      guard
+        let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier),
+        let bundle = Bundle(url: url)
+      else { return nil }
+      return (bundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String)
+        ?? (bundle.object(forInfoDictionaryKey: "CFBundleName") as? String)
+        ?? url.deletingPathExtension().lastPathComponent
+    #else
+      return nil
+    #endif
+  }
+
+  /// Rules whose owner app is the folder directly inside Application Support.
+  private static let applicationSupportOwnerRules: Set<String> = ["safe.chromium-caches"]
+
+  /// Folder names Chromium and Electron apps use for regenerable caches.
+  public static let chromiumCacheNames = [
+    "cache", "code cache", "gpucache", "dawncache", "dawngraphitecache",
+  ]
+
+  /// Chromium folders that hold user state and must never be treated as cache.
+  private static let chromiumUserState = [
+    "local storage", "indexeddb", "session storage", "service worker", "cookies", "databases",
+  ]
+
+  private static let systemLogPrefix: ClassificationRule.Matcher = .any([
+    .pathPrefix("/private/var/log/"), .pathPrefix("/var/log/"),
+  ])
+  private static let rotatedLogName: ClassificationRule.Matcher = .nameMatches(
+    #"\.\d+\.(gz|bz2)$"#)
 
   /// Rule ids that other rules may override. Everything else, and `protect.*` above all, is fixed.
   public static let overridableRuleIDs: Set<String> = [
@@ -171,6 +214,7 @@ public struct ClassificationService: Sendable {
         .pathContains("/library/caches/"),
         .pathContains("/library/logs/"),
         .pathContains("/private/var/folders/"),
+        .pathPrefix("/var/folders/"),
         .pathComponent("tmp"),
         .pathContains("/library/developer/xcode/deriveddata/"),
       ]),
@@ -228,6 +272,112 @@ public struct ClassificationService: Sendable {
       specificity: 80,
       reason: "Trash contents",
       riskNote: "Trash contents are safe to remove after confirmation."
+    ),
+    ClassificationRule(
+      id: "safe.container-caches",
+      name: "Sandboxed app cache",
+      matcher: .all([
+        .pathContains("/library/containers/"),
+        .itemType(.folder),
+        .nameEquals("caches"),
+        .pathContains("/data/library/caches"),
+      ]),
+      category: .safeToDelete,
+      confidence: .high,
+      specificity: 80,
+      reason: "Sandboxed app cache",
+      riskNote: "The app rebuilds this cache. It may start a little slower the first time."
+    ),
+    ClassificationRule(
+      id: "safe.chromium-caches",
+      name: "Chromium app cache",
+      matcher: .all([
+        .pathContains("/library/application support/"),
+        .itemType(.folder),
+        .any(chromiumCacheNames.map { .nameEquals($0) }),
+        .not(.any(chromiumUserState.map { .pathComponent($0) })),
+      ]),
+      category: .safeToDelete,
+      confidence: .high,
+      specificity: 85,
+      reason: "Chromium app cache",
+      riskNote: "The app rebuilds this cache. It may start a little slower the first time.",
+      overrides: ["tool.application-support"]
+    ),
+    ClassificationRule(
+      id: "safe.spotify-cache",
+      name: "Spotify cache",
+      matcher: .all([
+        .pathContains("/library/application support/spotify/persistentcache/"),
+        .nameEquals("storage"),
+      ]),
+      category: .safeToDelete,
+      confidence: .high,
+      specificity: 88,
+      reason: "Spotify streaming cache",
+      riskNote: "Spotify downloads songs again as you play them. Downloaded playlists are kept.",
+      ownerApp: "Spotify",
+      overrides: ["tool.application-support"]
+    ),
+    ClassificationRule(
+      id: "safe.adobe-media-cache",
+      name: "Adobe media cache",
+      matcher: .all([
+        .pathContains("/library/application support/adobe/common/"),
+        .nameEquals("media cache files"),
+      ]),
+      category: .safeToDelete,
+      confidence: .high,
+      specificity: 88,
+      reason: "Adobe media cache",
+      riskNote: "Adobe apps rebuild these files when you open a project again.",
+      ownerApp: "Adobe",
+      overrides: ["tool.application-support"]
+    ),
+    ClassificationRule(
+      id: "review.telegram-media",
+      name: "Telegram downloaded media",
+      matcher: .all([
+        .pathContains("/library/application support/telegram desktop/tdata/"),
+        .nameEquals("user_data"),
+      ]),
+      category: .probablyUnused,
+      confidence: .medium,
+      specificity: 88,
+      reason: "Telegram downloaded media",
+      riskNote: "Some media may no longer be available on Telegram's servers. Review it first.",
+      ownerApp: "Telegram",
+      overrides: ["tool.application-support"]
+    ),
+    ClassificationRule(
+      id: "safe.rotated-logs",
+      name: "Rotated system log",
+      matcher: .all([systemLogPrefix, .itemType(.file), rotatedLogName]),
+      category: .safeToDelete,
+      confidence: .high,
+      specificity: 80,
+      reason: "Old compressed system log",
+      riskNote: "macOS no longer writes to this log. Removing it needs an administrator."
+    ),
+    ClassificationRule(
+      id: "review.live-system-logs",
+      name: "Active system log",
+      matcher: .all([systemLogPrefix, .itemType(.file), .not(rotatedLogName)]),
+      category: .probablyUnused,
+      confidence: .low,
+      specificity: 60,
+      reason: "System log that may still be in use",
+      riskNote: "A system process may still be writing to this log. Review it before removing."
+    ),
+    ClassificationRule(
+      id: "safe.diagnostic-reports",
+      name: "Diagnostic reports",
+      matcher: .pathComponent("diagnosticreports"),
+      category: .safeToDelete,
+      confidence: .high,
+      specificity: 80,
+      reason: "Crash and diagnostic reports",
+      riskNote: "These reports are only needed if you plan to send them to a developer."
     ),
     ClassificationRule(
       id: "review.old-downloads",
@@ -311,8 +461,17 @@ public struct ClassificationService: Sendable {
     let deletionMethod: DeletionMethod =
       unavailable ? .notAllowed : (canMoveToTrash ? .trash : .manualReview)
 
+    let containerIdentifier = containerCacheIdentifier(context)
+    let resolvedContainerApp = containerIdentifier.flatMap(appName)
+    let displayName =
+      containerIdentifier.map { "\(resolvedContainerApp ?? $0) cache (\($0))" } ?? context.name
+    let ownerApp =
+      selected?.ownerApp
+      ?? containerIdentifier.map { resolvedContainerApp ?? $0 }
+      ?? applicationSupportOwner(rule: selected, path: context.normalizedPath)
+
     return ScanResult(
-      name: context.name,
+      name: displayName,
       path: input.path,
       normalizedPath: context.normalizedPath,
       sizeBytes: input.sizeBytes,
@@ -323,7 +482,7 @@ public struct ClassificationService: Sendable {
       riskNote: riskNote,
       recommendedAction: recommendedAction(for: deletionMethod),
       lastModified: input.lastModified,
-      ownerApp: selected?.ownerApp,
+      ownerApp: ownerApp,
       ownerTool: selected?.ownerTool ?? inferredOwnerTool(for: context),
       fileExtension: context.fileExtension,
       isHidden: context.name.hasPrefix("."),
@@ -334,8 +493,36 @@ public struct ClassificationService: Sendable {
       deletionMethod: deletionMethod,
       isCloudOnly: input.isCloudOnly,
       cloudOnlyBytes: input.cloudOnlyBytes,
-      requiresAdmin: input.requiresAdmin
+      requiresAdmin: input.requiresAdmin,
+      ruleId: selected?.id
     )
+  }
+
+  /// The bundle identifier for a container's `Data/Library/Caches` folder itself, else nil.
+  private func containerCacheIdentifier(_ context: Context) -> String? {
+    guard context.itemType == .folder, context.lowerName == "caches" else { return nil }
+    let components = URL(fileURLWithPath: context.normalizedPath).pathComponents
+    guard
+      let index = components.lastIndex(where: { $0.lowercased() == "containers" }),
+      components.count == index + 5,
+      components[index - 1].lowercased() == "library",
+      components[index + 2].lowercased() == "data",
+      components[index + 3].lowercased() == "library"
+    else { return nil }
+    let containerURL = URL(fileURLWithPath: components[...(index + 1)].joined(separator: "/"))
+    return ScanLocations.containerBundleIdentifier(containerURL: containerURL)
+  }
+
+  private func applicationSupportOwner(rule: ClassificationRule?, path: String) -> String? {
+    guard let rule, Self.applicationSupportOwnerRules.contains(rule.id) else { return nil }
+    let components = URL(fileURLWithPath: path).pathComponents
+    guard
+      let index = components.lastIndex(where: {
+        $0.caseInsensitiveCompare("Application Support") == .orderedSame
+      }),
+      index + 1 < components.count
+    else { return nil }
+    return components[index + 1]
   }
 
   private func makeContext(for input: ClassifiedItemInput) -> Context {
@@ -361,6 +548,8 @@ public struct ClassificationService: Sendable {
       return context.lowerPath.contains(value.lowercased())
     case .pathComponent(let value):
       return context.pathComponents.contains(value.lowercased())
+    case .pathPrefix(let value):
+      return context.lowerPath.hasPrefix(value.lowercased())
     case .nameEquals(let value):
       return context.lowerName == value.lowercased()
     case .extensionIn(let values):

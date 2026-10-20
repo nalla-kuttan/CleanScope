@@ -71,6 +71,8 @@ public struct ScanResult: Identifiable, Codable, Equatable, Sendable {
   public var cloudOnlyBytes: Int64
   /// The item's folder is not writable by the user, so removal needs an administrator.
   public var requiresAdmin: Bool
+  /// Id of the classification rule that produced the category, when one matched.
+  public var ruleId: String?
 
   public init(
     id: String = UUID().uuidString,
@@ -96,7 +98,8 @@ public struct ScanResult: Identifiable, Codable, Equatable, Sendable {
     deletionMethod: DeletionMethod,
     isCloudOnly: Bool = false,
     cloudOnlyBytes: Int64 = 0,
-    requiresAdmin: Bool = false
+    requiresAdmin: Bool = false,
+    ruleId: String? = nil
   ) {
     self.id = id
     self.name = name
@@ -122,13 +125,14 @@ public struct ScanResult: Identifiable, Codable, Equatable, Sendable {
     self.isCloudOnly = isCloudOnly
     self.cloudOnlyBytes = cloudOnlyBytes
     self.requiresAdmin = requiresAdmin
+    self.ruleId = ruleId
   }
 
   private enum CodingKeys: String, CodingKey {
     case id, name, path, normalizedPath, sizeBytes, itemType, category, confidence, reason
     case riskNote, recommendedAction, lastModified, ownerApp, ownerTool, fileExtension
     case isHidden, isProtected, isSynced, isExcluded, canDelete, deletionMethod
-    case isCloudOnly, cloudOnlyBytes, requiresAdmin
+    case isCloudOnly, cloudOnlyBytes, requiresAdmin, ruleId
   }
 
   public init(from decoder: Decoder) throws {
@@ -157,6 +161,7 @@ public struct ScanResult: Identifiable, Codable, Equatable, Sendable {
     isCloudOnly = try c.decodeIfPresent(Bool.self, forKey: .isCloudOnly) ?? false
     cloudOnlyBytes = try c.decodeIfPresent(Int64.self, forKey: .cloudOnlyBytes) ?? 0
     requiresAdmin = try c.decodeIfPresent(Bool.self, forKey: .requiresAdmin) ?? false
+    ruleId = try c.decodeIfPresent(String.self, forKey: .ruleId)
   }
 }
 
@@ -391,6 +396,8 @@ public struct ClassificationRule: Identifiable, Codable, Equatable, Sendable {
   public indirect enum Matcher: Codable, Equatable, Sendable {
     case pathContains(String)
     case pathComponent(String)
+    /// Case-insensitive prefix of the normalized path.
+    case pathPrefix(String)
     case nameEquals(String)
     case extensionIn([String])
     case itemType(ItemType)
