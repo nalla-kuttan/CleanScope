@@ -69,4 +69,12 @@ import Testing
     let decoded = try JSONDecoder().decode(Settings.self, from: JSONEncoder().encode(settings))
     #expect(decoded == settings)
   }
+
+  @Test func replacingReturnsNilWhenValueIsUnchanged() {
+    let settings = Settings.default
+    #expect(settings.replacing(\.showMenuBarExtra, with: false) == nil)
+    let changed = settings.replacing(\.showMenuBarExtra, with: true)
+    #expect(changed?.showMenuBarExtra == true)
+    #expect(changed?.scanDownloads == settings.scanDownloads)
+  }
 }

@@ -298,6 +298,21 @@ final class AppModel: ObservableObject {
 
   // MARK: - Settings side effects
 
+  /// A binding that writes only real changes. SwiftUI's `MenuBarExtra` keeps writing its
+  /// `isInserted` value back; passing those no-op writes to the `@Published` settings rebuilt
+  /// the whole scene each time and looped until the stack overflowed.
+  func settingBinding<Value: Equatable>(
+    _ keyPath: WritableKeyPath<CleanScopeCore.Settings, Value>
+  ) -> Binding<Value> {
+    Binding(
+      get: { self.settings[keyPath: keyPath] },
+      set: { newValue in
+        if let updated = self.settings.replacing(keyPath, with: newValue) {
+          self.settings = updated
+        }
+      })
+  }
+
   private func settingsDidChange(from old: CleanScopeCore.Settings) {
     if old.showMenuBarExtra != settings.showMenuBarExtra {
       statusMonitor.reschedule()
@@ -578,3 +593,4 @@ final class AppModel: ObservableObject {
     }
   }
 }
+

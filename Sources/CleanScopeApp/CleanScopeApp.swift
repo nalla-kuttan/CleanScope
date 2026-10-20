@@ -40,7 +40,7 @@ struct CleanScopeApp: App {
         .frame(width: 520, height: 620)
     }
 
-    MenuBarExtra(isInserted: $model.settings.showMenuBarExtra) {
+    MenuBarExtra(isInserted: model.settingBinding(\.showMenuBarExtra)) {
       MenuBarContentView()
         .environmentObject(model)
         .environmentObject(model.statusMonitor)

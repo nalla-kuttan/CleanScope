@@ -530,6 +530,17 @@ public struct Settings: Codable, Equatable, Sendable {
 }
 
 extension Settings {
+  /// A copy with one value replaced, or nil when the value is already set. Lets callers skip
+  /// writes that change nothing, so observers aren't notified for them.
+  public func replacing<Value: Equatable>(
+    _ keyPath: WritableKeyPath<Settings, Value>, with value: Value
+  ) -> Settings? {
+    guard self[keyPath: keyPath] != value else { return nil }
+    var copy = self
+    copy[keyPath: keyPath] = value
+    return copy
+  }
+
   private enum CodingKeys: String, CodingKey {
     case scanHiddenFolders, scanDeveloperFolders, scanDownloads, scanAppSupport
     case defaultDeletionMethod, showAdvancedCategories, saveScanHistory, largeFileThresholdBytes
