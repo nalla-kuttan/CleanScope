@@ -69,4 +69,11 @@ import Testing
     #expect(none.contains { $0.id == "__free__" } == false)
     #expect(none.map(\.id) == ["/a", "/b"])
   }
+
+  @Test func showsFreeSpaceOnlyAtTopOfWholeVolumeScan() {
+    #expect(StorageMapPresentation.showsFreeSpace(scanMode: .full, isTopLevel: true))
+    #expect(!StorageMapPresentation.showsFreeSpace(scanMode: .full, isTopLevel: false))
+    #expect(!StorageMapPresentation.showsFreeSpace(scanMode: .limited, isTopLevel: true))
+    #expect(!StorageMapPresentation.showsFreeSpace(scanMode: .developer, isTopLevel: true))
+  }
 }

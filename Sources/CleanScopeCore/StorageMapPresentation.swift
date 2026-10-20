@@ -26,6 +26,12 @@ public enum StorageMapPresentation {
     return dominant.map { .category($0.key) } ?? .unclassified
   }
 
+  /// Free space belongs on the map only at the top level of a whole-volume scan. A limited or
+  /// developer scan covers a subset, so adding the disk's free space would misstate the whole.
+  public static func showsFreeSpace(scanMode: ScanMode, isTopLevel: Bool) -> Bool {
+    isTopLevel && scanMode == .full
+  }
+
   /// Layout items for the node's displayed children, plus a free-space tile at a volume root.
   public static func items(
     for node: ScanNode,

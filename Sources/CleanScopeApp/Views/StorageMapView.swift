@@ -130,22 +130,28 @@ struct StorageMapView: View {
     var isSelectable: Bool { result.map { !ResultSelection.eligible([$0]).isEmpty } ?? false }
   }
 
-  /// Tiles for `node`, rebuilt only when the node, the results or the free space change.
+  /// Tiles for `node`, rebuilt only when the node, the results or the free space change. Free
+  /// space joins only at the top of a whole-volume scan.
   private func makeTiles(for node: ScanNode) -> [Tile] {
-    let freeBytes = trail.isEmpty ? (model.disk?.availableBytes ?? 0) : 0
+    let showsFree = model.session.map {
+      StorageMapPresentation.showsFreeSpace(scanMode: $0.scanMode, isTopLevel: trail.isEmpty)
+    } ?? false
+    let freeBytes = showsFree ? (model.disk?.availableBytes ?? 0) : 0
     let key = StorageMapCache.Key(
       sessionID: model.session?.id, nodeID: node.id, nodeBytes: node.sizeBytes,
       results: model.streamedResults, freeBytes: freeBytes)
-    return cache.tiles(for: key) { buildTiles(for: node, freeBytes: freeBytes) }
+    return cache.tiles(for: key) {
+      buildTiles(for: node, showsFree: showsFree, freeBytes: freeBytes)
+    }
   }
 
-  private func buildTiles(for node: ScanNode, freeBytes: Int64) -> [Tile] {
+  private func buildTiles(for node: ScanNode, showsFree: Bool, freeBytes: Int64) -> [Tile] {
     let byID = Dictionary(
       model.streamedResults.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
     let children = Dictionary(
       node.displayChildren().map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
     let items = StorageMapPresentation.items(
-      for: node, isVolumeRoot: trail.isEmpty, freeBytes: freeBytes)
+      for: node, isVolumeRoot: showsFree, freeBytes: freeBytes)
     return items.compactMap { item -> Tile? in
       if item.id == StorageMapPresentation.freeItemId {
         let free = ScanNode(

@@ -183,7 +183,7 @@
       }
       let total = children.reduce(0) { $0 + $1.sizeBytes }
       var session = ScanSession(
-        status: .completed, scanMode: .limited, diskTotalBytes: total * 2, diskUsedBytes: total,
+        status: .completed, scanMode: .full, diskTotalBytes: total * 2, diskUsedBytes: total,
         diskAvailableBytes: total, scannedPaths: ["/fixture"], skippedPaths: [], results: results)
       session.tree = ScanNode(
         path: "scan://fixture", name: "Map fixture", sizeBytes: total, itemType: .folder,
