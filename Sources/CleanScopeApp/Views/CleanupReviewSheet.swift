@@ -103,6 +103,7 @@ struct CleanupReviewSheet: View {
     .frame(width: 500)
     .alert("Delete \(itemPhrase) permanently?", isPresented: $confirmsPermanent) {
       Button("Cancel", role: .cancel) {}
+        .keyboardShortcut(.defaultAction)
       Button("Delete Permanently", role: .destructive) {
         let reviewed = items
         dismiss()

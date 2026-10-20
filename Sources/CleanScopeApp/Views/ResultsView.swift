@@ -220,7 +220,7 @@ struct ResultsView: View {
       EmptyStateView(
         title: destination.emptyTitle,
         systemImage: destination.systemImage,
-        message: "The last scan found nothing here. Turn on more scan sources in Settings to look further."
+        message: destination.emptyMessage
       )
     } else {
       EmptyStateView(
