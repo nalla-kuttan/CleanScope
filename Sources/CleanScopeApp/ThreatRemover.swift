@@ -67,6 +67,9 @@ enum ThreatRemover {
 
   /// Returns a failure message, or nil on success.
   private static func removeFile(_ path: String, permanently: Bool) async -> String? {
+    guard RemovalGuard.isRemovable(path) else {
+      return "CleanScope never removes this location. Review it in Finder."
+    }
     let url = URL(fileURLWithPath: path)
     guard FileManager.default.fileExists(atPath: path) else { return nil }
     do {

@@ -63,7 +63,10 @@ public actor DeletionService {
     }
 
     for item in selected {
-      if item.isProtected || item.deletionMethod == .notAllowed {
+      let targets = item.memberPaths ?? [item.normalizedPath]
+      if item.isProtected || item.deletionMethod == .notAllowed
+        || !targets.allSatisfy({ RemovalGuard.isRemovable($0) })
+      {
         record(item, .blocked, "Protected by macOS or unavailable. Item was left in place.")
         continue
       }
