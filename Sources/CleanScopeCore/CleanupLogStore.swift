@@ -38,7 +38,9 @@ public struct CleanupLogStore: Sendable {
   }
 
   public func append(_ entry: CleanupLogEntry) throws {
-    let entries = Array(([entry] + (try load())).prefix(Self.limit))
+    // An unreadable or corrupt log is replaced rather than blocking every future append.
+    let existing = (try? load()) ?? []
+    let entries = Array(([entry] + existing).prefix(Self.limit))
     try FileManager.default.createDirectory(
       at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
     let encoder = JSONEncoder()

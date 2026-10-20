@@ -148,6 +148,20 @@ import Testing
     #expect(loaded.last == entries[5])
   }
 
+  @Test func cleanupLogRecoversFromCorruptFile() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let fileURL = directory.appendingPathComponent("cleanup-log.json")
+    try Data("not json {{{".utf8).write(to: fileURL)
+    let store = CleanupLogStore(fileURL: fileURL)
+    let entry = CleanupLogEntry(
+      completedAt: Date(timeIntervalSince1970: 1_700_000_000), recoveredBytes: 42)
+
+    try store.append(entry)
+
+    #expect(try store.load() == [entry])
+  }
+
   @Test func missingCleanupLogLoadsEmpty() throws {
     #expect(try makeStore().load().isEmpty)
   }
