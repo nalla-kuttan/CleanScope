@@ -272,6 +272,13 @@ public struct ScanSession: Identifiable, Codable, Equatable, Sendable {
   public var skippedPaths: [SkippedPath]
   public var results: [ScanResult]
   public var summary: ScanSummary
+  /// Storage tree for the Storage Map. Kept in memory only; the next scan rebuilds it.
+  public var tree: ScanNode? = nil
+
+  private enum CodingKeys: String, CodingKey {
+    case id, startedAt, completedAt, status, scanMode, diskTotalBytes, diskUsedBytes
+    case diskAvailableBytes, scannedPaths, skippedPaths, results, summary
+  }
 
   public init(
     id: String = UUID().uuidString,

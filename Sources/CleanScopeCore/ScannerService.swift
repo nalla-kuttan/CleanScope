@@ -21,6 +21,17 @@ private final class ScanCancellationState: @unchecked Sendable {
   }
 }
 
+/// Real paths already visited during one scan, shared by every work item.
+private final class VisitedPaths: @unchecked Sendable {
+  private let lock = NSLock()
+  private var paths: Set<String> = []
+
+  /// Inserts `path` and returns true when it was not visited before.
+  func insertIfAbsent(_ path: String) -> Bool {
+    lock.withLock { paths.insert(path).inserted }
+  }
+}
+
 public struct DiskSnapshot: Equatable, Sendable {
   public var totalBytes: Int64
   public var availableBytes: Int64
@@ -35,15 +46,20 @@ public struct DiskSnapshot: Equatable, Sendable {
 public actor ScannerService {
   private let classifier: ClassificationService
   private let largeFileThresholdBytes: Int64
+  private let maxConcurrency: Int
+  private let treeDepth: Int
   private let cancellationState = ScanCancellationState()
-  private var visitedRealPaths: Set<String> = []
 
   public init(
     classifier: ClassificationService,
-    largeFileThresholdBytes: Int64 = Settings.default.largeFileThresholdBytes
+    largeFileThresholdBytes: Int64 = Settings.default.largeFileThresholdBytes,
+    maxConcurrency: Int = min(ProcessInfo.processInfo.activeProcessorCount, 6),
+    treeDepth: Int = 6
   ) {
     self.classifier = classifier
     self.largeFileThresholdBytes = largeFileThresholdBytes
+    self.maxConcurrency = max(1, maxConcurrency)
+    self.treeDepth = treeDepth
   }
 
   public nonisolated func cancel() {
@@ -57,17 +73,63 @@ public actor ScannerService {
     onResult: @Sendable (ScanResult) -> Void
   ) async -> ScanSession {
     cancellationState.reset()
-    visitedRealPaths = []
     let disk = diskSnapshot(for: URL(fileURLWithPath: NSHomeDirectory()))
+    let roots = paths.map { URL(fileURLWithPath: $0).standardizedFileURL }
+
+    let outcome = await withoutActuallyEscaping(onResult) { emit in
+      await scanRoots(roots, settings: settings, onResult: emit)
+    }
+
+    var session = ScanSession(
+      completedAt: Date(),
+      status: cancellationState.isCancelled ? .cancelled : .completed,
+      scanMode: mode,
+      diskTotalBytes: disk.totalBytes,
+      diskUsedBytes: disk.usedBytes,
+      diskAvailableBytes: disk.availableBytes,
+      scannedPaths: roots.map(\.path),
+      skippedPaths: outcome.skipped,
+      results: outcome.results
+    )
+    session.tree = outcome.tree
+    return session
+  }
+
+  private struct Outcome {
     var results: [ScanResult] = []
     var skipped: [SkippedPath] = []
-    var scanned: [String] = []
+    var tree: ScanNode?
+  }
 
-    for path in paths where !cancellationState.isCancelled {
-      let url = URL(fileURLWithPath: path).standardizedFileURL
-      scanned.append(url.path)
+  private struct WorkItem: Sendable {
+    var rootIndex: Int
+    var childIndex: Int
+    var url: URL
+    var guarded: Bool
+  }
+
+  private func scanRoots(
+    _ roots: [URL],
+    settings: Settings,
+    onResult: @escaping @Sendable (ScanResult) -> Void
+  ) async -> Outcome {
+    let walker = TreeWalker(
+      classifier: classifier,
+      largeFileThresholdBytes: largeFileThresholdBytes,
+      treeDepth: treeDepth,
+      settings: settings,
+      cancellation: cancellationState,
+      visited: VisitedPaths(),
+      onResult: onResult
+    )
+    var outcome = Outcome()
+    var openFolders: [Int: TreeWalker.OpenFolder] = [:]
+    var rootVisits: [Int: TreeWalker.Visit] = [:]
+    var items: [WorkItem] = []
+
+    for (index, url) in roots.enumerated() where !cancellationState.isCancelled {
       guard FileManager.default.fileExists(atPath: url.path) else {
-        skipped.append(
+        outcome.skipped.append(
           SkippedPath(
             path: url.path,
             reason: .externalDriveUnavailable,
@@ -75,150 +137,73 @@ public actor ScannerService {
           ))
         continue
       }
-      await scanURL(
-        url, settings: settings, results: &results, skipped: &skipped, onResult: onResult)
-    }
-
-    return ScanSession(
-      completedAt: Date(),
-      status: cancellationState.isCancelled ? .cancelled : .completed,
-      scanMode: mode,
-      diskTotalBytes: disk.totalBytes,
-      diskUsedBytes: disk.usedBytes,
-      diskAvailableBytes: disk.availableBytes,
-      scannedPaths: scanned,
-      skippedPaths: skipped,
-      results: results
-    )
-  }
-
-  @discardableResult
-  private func scanURL(
-    _ url: URL,
-    settings: Settings,
-    results: inout [ScanResult],
-    skipped: inout [SkippedPath],
-    onResult: @Sendable (ScanResult) -> Void
-  ) async -> Int64 {
-    guard !cancellationState.isCancelled else { return 0 }
-    if url.lastPathComponent.hasPrefix("."), !settings.scanHiddenFolders {
-      return 0
-    }
-
-    do {
-      let keys: Set<URLResourceKey> = [
-        .isDirectoryKey,
-        .isSymbolicLinkKey,
-        .fileSizeKey,
-        .totalFileAllocatedSizeKey,
-        .contentModificationDateKey,
-        .isUserImmutableKey,
-        .isSystemImmutableKey,
-      ]
-      let values = try url.resourceValues(forKeys: keys)
-
-      guard FileManager.default.isReadableFile(atPath: url.path) else {
-        skipped.append(
-          SkippedPath(
-            path: url.path,
-            reason: .permissionDenied,
-            message: "Permission required to scan this folder."
-          ))
-        return 0
+      let coveredByOtherRoot = roots.enumerated().contains { otherIndex, other in
+        otherIndex != index
+          && (url.path.hasPrefix(other.path + "/") || (url.path == other.path && otherIndex < index))
       }
-
-      if values.isSymbolicLink == true {
-        skipped.append(
-          SkippedPath(
-            path: url.path,
-            reason: .symlinkLoop,
-            message: "Symlink was recorded but not followed to avoid recursive loops."
-          ))
-        return 0
-      }
-
-      let realPath = url.resolvingSymlinksInPath().path
-      guard !visitedRealPaths.contains(realPath) else {
-        skipped.append(
+      if coveredByOtherRoot {
+        outcome.skipped.append(
           SkippedPath(
             path: url.path,
             reason: .symlinkLoop,
             message: "Path resolves to a location already scanned."
           ))
-        return 0
-      }
-      visitedRealPaths.insert(realPath)
-
-      let isProtected = values.isUserImmutable == true || values.isSystemImmutable == true
-      if values.isDirectory == true {
-        let children = try FileManager.default.contentsOfDirectory(
-          at: url,
-          includingPropertiesForKeys: Array(keys),
-          options: [.skipsPackageDescendants]
-        )
-        var folderBytes: Int64 = 0
-        for child in children where !cancellationState.isCancelled {
-          folderBytes += await scanURL(
-            child,
-            settings: settings,
-            results: &results,
-            skipped: &skipped,
-            onResult: onResult
-          )
-        }
-        if shouldEmitFolder(url: url, bytes: folderBytes, settings: settings) {
-          let result = classifier.classify(
-            ClassifiedItemInput(
-              path: url.path,
-              sizeBytes: folderBytes,
-              itemType: .folder,
-              lastModified: values.contentModificationDate,
-              isProtected: isProtected
-            ))
-          results.append(result)
-          onResult(result)
-        }
-        return folderBytes
+        continue
       }
 
-      let bytes = Int64(values.totalFileAllocatedSize ?? values.fileSize ?? 0)
-      if bytes >= largeFileThresholdBytes {
-        let result = classifier.classify(
-          ClassifiedItemInput(
-            path: url.path,
-            sizeBytes: bytes,
-            itemType: .file,
-            lastModified: values.contentModificationDate,
-            isProtected: isProtected
-          ))
-        results.append(result)
-        onResult(result)
+      // A root inside a guarded system path (for example an external drive) is scanned as asked.
+      let guarded = !SystemPathGuard.shouldSkip(url.path)
+      switch walker.begin(url, depth: 0, guarded: guarded) {
+      case .done(let visit):
+        rootVisits[index] = visit
+      case .folder(let folder):
+        openFolders[index] = folder
+        for (childIndex, child) in folder.children.enumerated() {
+          items.append(
+            WorkItem(rootIndex: index, childIndex: childIndex, url: child, guarded: guarded))
+        }
       }
-      return bytes
-    } catch CocoaError.fileReadNoPermission {
-      skipped.append(
-        SkippedPath(
-          path: url.path,
-          reason: .permissionDenied,
-          message: "Permission required to scan this folder."
-        ))
-    } catch {
-      skipped.append(
-        SkippedPath(
-          path: url.path,
-          reason: .unknownError,
-          message: error.localizedDescription
-        ))
     }
-    return 0
-  }
 
-  private func shouldEmitFolder(url: URL, bytes: Int64, settings: Settings) -> Bool {
-    let name = url.lastPathComponent
-    if name.hasPrefix(".") && settings.scanHiddenFolders { return bytes > 0 }
-    if url.path.localizedCaseInsensitiveContains("/Library/Caches") { return bytes > 0 }
-    if bytes >= largeFileThresholdBytes { return true }
-    return false
+    var childVisits: [Int: [Int: TreeWalker.Visit]] = [:]
+    await withTaskGroup(of: (Int, Int, TreeWalker.Visit).self) { group in
+      var pending = items.makeIterator()
+      for _ in 0..<maxConcurrency {
+        guard let item = pending.next() else { break }
+        group.addTask { (item.rootIndex, item.childIndex, walker.visit(item.url, depth: 1, guarded: item.guarded)) }
+      }
+      while let (rootIndex, childIndex, visit) = await group.next() {
+        childVisits[rootIndex, default: [:]][childIndex] = visit
+        if let item = pending.next() {
+          group.addTask {
+            (item.rootIndex, item.childIndex, walker.visit(item.url, depth: 1, guarded: item.guarded))
+          }
+        }
+      }
+    }
+
+    for (index, folder) in openFolders {
+      let visits = (0..<folder.children.count).compactMap { childVisits[index]?[$0] }
+      rootVisits[index] = walker.finish(folder, childVisits: visits)
+    }
+
+    var rootNodes: [ScanNode] = []
+    for index in roots.indices {
+      guard let visit = rootVisits[index] else { continue }
+      outcome.results += visit.results
+      outcome.skipped += visit.skipped
+      if let node = visit.node { rootNodes.append(node) }
+    }
+    if !rootNodes.isEmpty {
+      outcome.tree = ScanNode(
+        path: "scan://locations",
+        name: "Scanned locations",
+        sizeBytes: rootNodes.reduce(0) { $0 + $1.sizeBytes },
+        itemType: .folder,
+        children: rootNodes
+      )
+    }
+    return outcome
   }
 
   public nonisolated func diskSnapshot(for url: URL) -> DiskSnapshot {
@@ -229,6 +214,285 @@ public actor ScannerService {
     return DiskSnapshot(
       totalBytes: Int64(values?.volumeTotalCapacity ?? 0),
       availableBytes: values?.volumeAvailableCapacityForImportantUsage ?? 0
+    )
+  }
+}
+
+/// Walks one subtree synchronously. Work items run walkers in parallel; all shared state is
+/// lock-protected or immutable.
+private struct TreeWalker: Sendable {
+  struct Visit: Sendable {
+    var bytes: Int64 = 0
+    var results: [ScanResult] = []
+    var skipped: [SkippedPath] = []
+    var node: ScanNode?
+  }
+
+  struct OpenFolder: Sendable {
+    var url: URL
+    var depth: Int
+    var lastModified: Date?
+    var isProtected: Bool
+    var children: [URL]
+    var preliminary: Visit
+  }
+
+  enum Entry: Sendable {
+    case done(Visit)
+    case folder(OpenFolder)
+  }
+
+  /// Rules whose folders are listed even when they sit outside a Caches folder.
+  static let emittedFolderRules: Set<String> = [
+    "safe.chromium-caches", "safe.spotify-cache", "safe.adobe-media-cache",
+    "review.telegram-media", "safe.diagnostic-reports", "safe.container-caches",
+  ]
+  private static let emittedFolderNames: Set<String> = Set(
+    ClassificationService.chromiumCacheNames + [
+      "storage", "media cache files", "user_data", "diagnosticreports", "caches",
+    ])
+
+  static let resourceKeys: Set<URLResourceKey> = [
+    .isDirectoryKey,
+    .isSymbolicLinkKey,
+    .fileSizeKey,
+    .totalFileAllocatedSizeKey,
+    .contentModificationDateKey,
+    .isUserImmutableKey,
+    .isSystemImmutableKey,
+  ]
+
+  let classifier: ClassificationService
+  let largeFileThresholdBytes: Int64
+  let treeDepth: Int
+  let settings: Settings
+  let cancellation: ScanCancellationState
+  let visited: VisitedPaths
+  let onResult: @Sendable (ScanResult) -> Void
+
+  fileprivate init(
+    classifier: ClassificationService,
+    largeFileThresholdBytes: Int64,
+    treeDepth: Int,
+    settings: Settings,
+    cancellation: ScanCancellationState,
+    visited: VisitedPaths,
+    onResult: @escaping @Sendable (ScanResult) -> Void
+  ) {
+    self.classifier = classifier
+    self.largeFileThresholdBytes = largeFileThresholdBytes
+    self.treeDepth = treeDepth
+    self.settings = settings
+    self.cancellation = cancellation
+    self.visited = visited
+    self.onResult = onResult
+  }
+
+  func visit(_ url: URL, depth: Int, guarded: Bool) -> Visit {
+    switch begin(url, depth: depth, guarded: guarded) {
+    case .done(let visit):
+      return visit
+    case .folder(let folder):
+      var childVisits: [Visit] = []
+      childVisits.reserveCapacity(folder.children.count)
+      for child in folder.children where !cancellation.isCancelled {
+        childVisits.append(visit(child, depth: depth + 1, guarded: guarded))
+      }
+      return finish(folder, childVisits: childVisits)
+    }
+  }
+
+  /// Checks one item. Files finish here; folders return their children for the caller to visit.
+  func begin(_ url: URL, depth: Int, guarded: Bool) -> Entry {
+    var visit = Visit()
+    guard !cancellation.isCancelled else { return .done(visit) }
+    if url.lastPathComponent.hasPrefix("."), !settings.scanHiddenFolders {
+      return .done(visit)
+    }
+    if guarded, depth > 0, SystemPathGuard.shouldSkip(url.path) {
+      return .done(visit)
+    }
+
+    do {
+      let values = try url.resourceValues(forKeys: Self.resourceKeys)
+
+      if values.isSymbolicLink == true {
+        visit.skipped.append(
+          SkippedPath(
+            path: url.path,
+            reason: .symlinkLoop,
+            message: "Symlink was recorded but not followed to avoid recursive loops."
+          ))
+        return .done(visit)
+      }
+
+      guard FileManager.default.isReadableFile(atPath: url.path) else {
+        visit.skipped.append(permissionSkip(url))
+        return .done(visit)
+      }
+
+      let realPath = SystemPathGuard.canonical(url.resolvingSymlinksInPath().path)
+      guard visited.insertIfAbsent(realPath) else {
+        visit.skipped.append(
+          SkippedPath(
+            path: url.path,
+            reason: .symlinkLoop,
+            message: "Path resolves to a location already scanned."
+          ))
+        return .done(visit)
+      }
+
+      let flags = FileFlags.read(path: url.path) ?? FileFlags(rawFlags: 0)
+      let isProtected =
+        values.isUserImmutable == true || values.isSystemImmutable == true || flags.isRestricted
+
+      if values.isDirectory == true {
+        // Listing a cloud-only folder would download it, so it is left alone.
+        if flags.isDataless { return .done(visit) }
+        let children = try FileManager.default.contentsOfDirectory(
+          at: url,
+          includingPropertiesForKeys: Array(Self.resourceKeys),
+          options: [.skipsPackageDescendants]
+        )
+        return .folder(
+          OpenFolder(
+            url: url, depth: depth, lastModified: values.contentModificationDate,
+            isProtected: isProtected, children: children, preliminary: visit))
+      }
+
+      let logicalBytes = Int64(values.fileSize ?? 0)
+      let bytes =
+        flags.isDataless ? 0 : Int64(values.totalFileAllocatedSize ?? values.fileSize ?? 0)
+      var resultId: String?
+      if shouldEmitFile(url: url, bytes: flags.isDataless ? logicalBytes : bytes) {
+        let result = classifier.classify(
+          ClassifiedItemInput(
+            path: url.path,
+            sizeBytes: bytes,
+            itemType: .file,
+            lastModified: values.contentModificationDate,
+            isProtected: isProtected,
+            isCloudOnly: flags.isDataless,
+            cloudOnlyBytes: flags.isDataless ? logicalBytes : 0,
+            requiresAdmin: parentIsReadOnly(url)
+          ))
+        resultId = result.id
+        visit.results.append(result)
+        onResult(result)
+      }
+      visit.bytes = bytes
+      visit.node = ScanNode(
+        path: url.path, name: url.lastPathComponent, sizeBytes: bytes, itemType: .file,
+        resultId: resultId, lastModified: values.contentModificationDate)
+      return .done(visit)
+    } catch CocoaError.fileReadNoPermission {
+      visit.skipped.append(permissionSkip(url))
+    } catch {
+      visit.skipped.append(
+        SkippedPath(
+          path: url.path,
+          reason: .unknownError,
+          message: error.localizedDescription
+        ))
+    }
+    return .done(visit)
+  }
+
+  /// Sums a folder's children, emits the folder when it is worth listing, and prunes the tree.
+  func finish(_ folder: OpenFolder, childVisits: [Visit]) -> Visit {
+    var visit = folder.preliminary
+    var childNodes: [ScanNode] = []
+    for child in childVisits {
+      visit.bytes += child.bytes
+      visit.results += child.results
+      visit.skipped += child.skipped
+      if let node = child.node { childNodes.append(node) }
+    }
+
+    var resultId: String?
+    if let result = emittedFolderResult(folder, bytes: visit.bytes) {
+      resultId = result.id
+      visit.results.append(result)
+      onResult(result)
+    }
+
+    var node = ScanNode(
+      path: folder.url.path, name: folder.url.lastPathComponent, sizeBytes: visit.bytes,
+      itemType: .folder, resultId: resultId, lastModified: folder.lastModified)
+    if folder.depth >= treeDepth {
+      node.otherBytes = visit.bytes
+    } else {
+      let cutoff = visit.bytes / 100
+      for child in childNodes {
+        let keep =
+          child.sizeBytes > 0
+          && (child.sizeBytes >= cutoff
+            || (child.itemType == .file && child.sizeBytes >= largeFileThresholdBytes))
+        if keep {
+          node.children.append(child)
+        } else {
+          node.otherBytes += child.sizeBytes
+        }
+      }
+    }
+    visit.node = node
+    return visit
+  }
+
+  private func emittedFolderResult(_ folder: OpenFolder, bytes: Int64) -> ScanResult? {
+    let url = folder.url
+    let name = url.lastPathComponent
+    var listed = false
+    if name.hasPrefix(".") && settings.scanHiddenFolders {
+      listed = bytes > 0
+    } else if url.path.localizedCaseInsensitiveContains("/Library/Caches") {
+      listed = bytes > 0
+    } else if bytes >= largeFileThresholdBytes {
+      listed = true
+    }
+
+    let result = { () -> ScanResult in
+      classifier.classify(
+        ClassifiedItemInput(
+          path: url.path,
+          sizeBytes: bytes,
+          itemType: .folder,
+          lastModified: folder.lastModified,
+          isProtected: folder.isProtected,
+          requiresAdmin: parentIsReadOnly(url)
+        ))
+    }
+    if listed { return result() }
+    guard bytes > 0, Self.emittedFolderNames.contains(name.lowercased()) else { return nil }
+    let candidate = result()
+    guard let ruleId = candidate.ruleId, Self.emittedFolderRules.contains(ruleId) else {
+      return nil
+    }
+    return candidate
+  }
+
+  private func shouldEmitFile(url: URL, bytes: Int64) -> Bool {
+    if bytes >= largeFileThresholdBytes { return true }
+    let path = url.path
+    return bytes > 0 && (path.hasPrefix("/private/var/log/") || path.hasPrefix("/var/log/"))
+  }
+
+  private func parentIsReadOnly(_ url: URL) -> Bool {
+    !FileManager.default.isWritableFile(atPath: url.deletingLastPathComponent().path)
+  }
+
+  private func permissionSkip(_ url: URL) -> SkippedPath {
+    if url.path.contains("/Library/Containers/") {
+      return SkippedPath(
+        path: url.path,
+        reason: .protectedByMacOS,
+        message: "macOS asks before CleanScope reads other apps' data."
+      )
+    }
+    return SkippedPath(
+      path: url.path,
+      reason: .permissionDenied,
+      message: "Permission required to scan this folder."
     )
   }
 }
