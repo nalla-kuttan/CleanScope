@@ -67,7 +67,10 @@ struct MenuBarLabel: View {
     }
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(MenuBarPresentation.accessibilityLabel(sizeLabel: label))
-    .onAppear { if !model.isScanning { heldSafeBytes = live } }
+    .onAppear { heldSafeBytes = live }
+    .onChange(of: model.isScanning) { _, scanning in
+      if !scanning { heldSafeBytes = model.summary.safeToDeleteBytes }
+    }
     .onChange(of: live) { _, newValue in
       if !model.isScanning { heldSafeBytes = newValue }
     }
