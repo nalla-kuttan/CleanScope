@@ -57,6 +57,23 @@ public enum StoragePresentation {
     return "\(CountPhrase.make(count, "item")) \(count == 1 ? "deserves" : "deserve") a closer look."
   }
 
+  /// The hero's sub-line: the first-run reassurance before any scan, the live count while
+  /// scanning, and the disk weather once there are results (or a cleanup).
+  public static func heroSubline(
+    state: HeroState, itemsFound: Int, usedFraction: Double, availableBytes: Int64,
+    safeBytes: Int64
+  ) -> String {
+    switch state {
+    case .idle:
+      return "CleanScope checks known cleanup locations. Nothing is removed until you review it."
+    case .scanning:
+      return "\(CountPhrase.make(itemsFound, "item")) found so far."
+    case .results, .cleaned:
+      return weatherLine(
+        usedFraction: usedFraction, availableBytes: availableBytes, safeBytes: safeBytes)
+    }
+  }
+
   /// The Dashboard's calm disk-weather line. Only the tightest tier quotes figures, and it
   /// promises quick wins only when there are some.
   public static func weatherLine(usedFraction: Double, availableBytes: Int64, safeBytes: Int64)

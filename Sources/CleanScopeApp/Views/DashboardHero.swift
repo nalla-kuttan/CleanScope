@@ -97,13 +97,11 @@ struct DashboardHero: View {
       safeBytes: model.summary.safeToDeleteBytes)
   }
 
-  /// Scanning shows the live count; every other state shows the disk weather. The review-count
-  /// line lives in the summary card.
+  /// Idle keeps the first-run reassurance, scanning the live count, everything after the
+  /// disk weather. The review-count line lives in the summary card.
   private func subheadline(for state: HeroState) -> String {
-    if state == .scanning {
-      return "\(CountPhrase.make(model.summary.totalResults, "item")) found so far."
-    }
-    return StoragePresentation.weatherLine(
+    StoragePresentation.heroSubline(
+      state: state, itemsFound: model.summary.totalResults,
       usedFraction: model.weatherUsedFraction,
       availableBytes: model.weatherDisk?.availableBytes ?? 0,
       safeBytes: model.summary.safeToDeleteBytes)

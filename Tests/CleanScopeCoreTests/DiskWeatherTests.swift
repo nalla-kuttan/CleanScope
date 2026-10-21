@@ -16,6 +16,20 @@ import Testing
         == "Room is tight. 4 GB available. Quick wins can free 1.85 GB without touching your files.")
   }
 
+  @Test func heroSublineByState() {
+    func line(_ state: HeroState) -> String {
+      StoragePresentation.heroSubline(
+        state: state, itemsFound: 3, usedFraction: 0.75, availableBytes: 60_000_000_000,
+        safeBytes: 1_000_000_000)
+    }
+    #expect(
+      line(.idle)
+        == "CleanScope checks known cleanup locations. Nothing is removed until you review it.")
+    #expect(line(.scanning) == "3 items found so far.")
+    #expect(line(.results) == "Getting cozy.")
+    #expect(line(.cleaned) == "Getting cozy.")
+  }
+
   @Test func tightRoomWithNothingSafeMakesNoPromise() {
     let line = StoragePresentation.weatherLine(
       usedFraction: 0.95, availableBytes: 4_000_000_000, safeBytes: 0)
