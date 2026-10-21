@@ -32,6 +32,10 @@ struct DashboardView: View {
           }
         }
 
+        if model.isScanning {
+          ScanTheatre()
+        }
+
         GrowthSummaryView(
           summary: model.summary,
           safeCount: model.safeCount,
