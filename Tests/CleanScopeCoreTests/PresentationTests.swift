@@ -207,6 +207,27 @@ import Testing
     #expect(plan.remainingSelection == [missing.id])
   }
 
+  @Test func cleanupPlanOverRemainingResultsNeverIncludesTrashedItems() {
+    let trashedFolder = resultFixture(path: "/Users/me/Library/Caches/big")
+    let nested = resultFixture(path: "/Users/me/Library/Caches/big/inner")
+    let trashedFile = resultFixture(path: "/Users/me/Library/Caches/old")
+    let kept = resultFixture(path: "/Users/me/Library/Caches/kept")
+    let all = [trashedFolder, nested, trashedFile, kept]
+    let trashed: Set<String> = [trashedFolder.id, trashedFile.id]
+    let gone = trashed.union([nested.id])
+    let current = ResultPresentation.remaining(all, excluding: trashed)
+
+    // A stale review (or a lingering selection) that still names the trashed items.
+    let plan = ResultSelection.cleanupPlan(
+      reviewed: all, current: current, selection: Set(all.map(\.id)))
+
+    #expect(plan.items.map(\.id) == [kept.id])
+    #expect(Set(plan.items.map(\.id)).isDisjoint(with: gone))
+    // Preselection over the same remaining results never re-selects what already left.
+    #expect(ResultPresentation.preselection(for: current) == [kept.id])
+    #expect(ResultPresentation.preselection(for: current).isDisjoint(with: gone))
+  }
+
   @Test func cleanedCopyFollowsHowItemsLeft() {
     #expect(StoragePresentation.cleanedHeadline(method: .trash) == "Moved safely to Trash.")
     #expect(StoragePresentation.cleanedHeadline(method: .permanent) == "Deleted permanently.")

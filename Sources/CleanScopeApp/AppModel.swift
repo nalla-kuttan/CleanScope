@@ -724,8 +724,9 @@ final class AppModel: ObservableObject {
     session = completed
     streamedResults = completed.results.map { ExclusionRule.applying(rules, to: $0) }
     if settings.preselectSafeCaches && completed.status == .completed {
-      // Built from the exclusion-applied results, so excluded items are never preselected.
-      selection = ResultPresentation.preselection(for: streamedResults)
+      // Built from the exclusion-applied results without trashed items (or anything inside a
+      // trashed folder), so neither excluded nor already-removed items are preselected.
+      selection = ResultPresentation.preselection(for: visibleResults)
     }
     permissionSummary = permissionService.summary(skippedPaths: completed.skippedPaths)
     disk = Disk(totalBytes: completed.diskTotalBytes, availableBytes: completed.diskAvailableBytes)
@@ -889,8 +890,10 @@ final class AppModel: ObservableObject {
     selection.removeAll()
   }
 
+  /// The selected items still on disk: trashed items and anything inside a trashed folder never
+  /// reach the basket or a review, even if their ids linger in `selection`.
   func selectedResults() -> [ScanResult] {
-    streamedResults.filter {
+    visibleResults.filter {
       selection.contains($0.id) && $0.canDelete && !$0.isExcluded
     }
   }
@@ -917,8 +920,10 @@ final class AppModel: ObservableObject {
     }
     isCleaningUp = true
     defer { isCleaningUp = false }
+    // Revalidated against the results still on disk, so an item already trashed (or inside a
+    // trashed folder) is never sent to the deletion service a second time.
     let plan = ResultSelection.cleanupPlan(
-      reviewed: items, current: streamedResults, selection: selection)
+      reviewed: items, current: visibleResults, selection: selection)
     guard !plan.items.isEmpty else { return }
     let terrariumBefore = TerrariumState(layers: terrariumLayers, growthStage: terrariumGrowthStage)
     // DeletionService treats anything but `.permanent` as the Trash; record the same.
