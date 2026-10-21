@@ -133,25 +133,38 @@ final class TerrariumScene {
 
     guard on != isScanning else { return }
     isScanning = on
+    updateLensMotion(transition: on ? 0.6 : 0.8)
+  }
+
+  /// The only place lens motion starts or stops. It replaces any running lens actions with the
+  /// pose `TerrariumLayout.lensPose` picks: moving (bob, or orbit plus bob) only while ambient
+  /// motion plays, otherwise held still at its rest point. The bob is absolute around that point,
+  /// so pausing and resuming never leaves the lens drifted.
+  private func updateLensMotion(transition: Double) {
     lens.removeAction(forKey: "bob")
-    if on {
-      SCNTransaction.begin()
-      SCNTransaction.animationDuration = timed(0.6)
-      lens.position = SCNVector3(-B.orbitRadius, -0.2, 0)
-      SCNTransaction.commit()
-      lensRig.runAction(
-        .repeatForever(.rotateBy(x: 0, y: -2 * .pi, z: 0, duration: 3)), forKey: "orbit")
-      lens.runAction(Self.bob(height: 0.3, period: 3), forKey: "bob")
-    } else {
-      lensRig.removeAction(forKey: "orbit")
-      lensRig.eulerAngles = lensRig.presentation.eulerAngles
-      SCNTransaction.begin()
-      SCNTransaction.animationDuration = timed(0.8)
+    lensRig.removeAction(forKey: "orbit")
+    let pose = TerrariumLayout.lensPose(isScanning: isScanning, animates: ambient)
+    let rest = isScanning ? B.scanningLens : B.parkedLens
+    let (moving, bob): (Bool, (height: Double, period: Double)) =
+      switch pose {
+      case .parked(let bobbing): (bobbing, (0.06, 4.8))
+      case .scanning(let orbiting): (orbiting, (0.3, 3))
+      }
+    guard moving else {
       lensRig.eulerAngles = SCNVector3(0, 0, 0)
-      lens.position = B.parkedLens
-      SCNTransaction.commit()
-      if ambient { lens.runAction(Self.bob(height: 0.06, period: 4.8), forKey: "bob") }
+      lens.position = rest
+      return
     }
+    lens.runAction(
+      .sequence([
+        .move(to: rest, duration: transition),
+        Self.bob(around: rest, height: bob.height, period: bob.period),
+      ]), forKey: "bob")
+    lensRig.runAction(
+      isScanning
+        ? .repeatForever(.rotateBy(x: 0, y: -2 * .pi, z: 0, duration: 3))
+        : .rotateTo(x: 0, y: 0, z: 0, duration: transition, usesShortestUnitArc: true),
+      forKey: "orbit")
   }
 
   /// After a confirmed cleanup: the litter shrinks and sinks 0.08 (each leaf after its own short
@@ -215,13 +228,12 @@ final class TerrariumScene {
       ])
       sway.timingMode = .easeInEaseOut
       sprout.runAction(.repeatForever(sway), forKey: "sway")
-      if !isScanning { lens.runAction(Self.bob(height: 0.06, period: 4.8), forKey: "bob") }
     } else {
       world.removeAction(forKey: "spin")
       sprout.removeAction(forKey: "sway")
-      if !isScanning { lens.removeAction(forKey: "bob") }
       setPointer(0)
     }
+    updateLensMotion(transition: 0)
   }
 
   /// Pointer position across the view, −0.5 (left edge) … 0.5 (right edge); tilts ±0.3 rad.
@@ -234,10 +246,12 @@ final class TerrariumScene {
     SCNTransaction.commit()
   }
 
-  private static func bob(height: Double, period: Double) -> SCNAction {
-    let up = SCNAction.moveBy(x: 0, y: height / 2, z: 0, duration: period / 2)
+  /// Rises `height / 2` above `rest` and back, forever, in absolute positions.
+  private static func bob(around rest: SCNVector3, height: Double, period: Double) -> SCNAction {
+    let top = SCNVector3(rest.x, rest.y + height / 2, rest.z)
+    let up = SCNAction.move(to: top, duration: period / 2)
     up.timingMode = .easeInEaseOut
-    let down = SCNAction.moveBy(x: 0, y: -height / 2, z: 0, duration: period / 2)
+    let down = SCNAction.move(to: rest, duration: period / 2)
     down.timingMode = .easeInEaseOut
     return .repeatForever(.sequence([up, down]))
   }

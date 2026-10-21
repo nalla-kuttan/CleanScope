@@ -27,6 +27,12 @@ public struct TerrariumLayer: Equatable, Sendable {
   }
 }
 
+/// The Sprout Lens beside the terrarium: parked by the dome, or out on its scanning orbit.
+public enum TerrariumLensPose: Equatable, Sendable {
+  case parked(bobbing: Bool)
+  case scanning(orbiting: Bool)
+}
+
 /// Pure math mapping storage categories to terrarium soil-layer heights.
 public enum TerrariumLayout {
   /// Layers ordered bottom to top: system, personal, app data, review, safe.
@@ -50,6 +56,12 @@ public enum TerrariumLayout {
     case 1...2: return 2
     default: return 3
     }
+  }
+
+  /// Where the Sprout Lens rests and whether it moves. It moves (bobs when parked, orbits while
+  /// scanning) only while the view animates; under Reduce Motion or while paused it holds still.
+  public static func lensPose(isScanning: Bool, animates: Bool) -> TerrariumLensPose {
+    isScanning ? .scanning(orbiting: animates) : .parked(bobbing: animates)
   }
 
   /// The terrarium's single VoiceOver label, top layer first: "Storage terrarium: 5.94 GB safe to

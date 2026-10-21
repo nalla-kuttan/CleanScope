@@ -14,7 +14,9 @@ enum TerrariumBuilders {
   static let leafCount = 170
   /// Where the lens rests beside the dome, and the radius of its scanning orbit.
   static let parkedLens = SCNVector3(-2.75, 0.35, 0.9)
-  static let orbitRadius = 2.75
+  /// The lens's point on its scanning orbit (radius 2.75) before the rig turns; also its still
+  /// scanning pose under Reduce Motion or while paused.
+  static let scanningLens = SCNVector3(-2.75, -0.2, 0)
 
   static func color(for kind: TerrariumLayer.Kind) -> UInt32 {
     switch kind {

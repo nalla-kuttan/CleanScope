@@ -71,6 +71,16 @@ import Testing
     #expect(TerrariumLayer.Kind(category: .doNotBulkDelete) == .personal)
   }
 
+  @Test func lensMovesOnlyWhileAnimationIsAllowed() {
+    #expect(TerrariumLayout.lensPose(isScanning: false, animates: true) == .parked(bobbing: true))
+    #expect(TerrariumLayout.lensPose(isScanning: false, animates: false) == .parked(bobbing: false))
+    #expect(
+      TerrariumLayout.lensPose(isScanning: true, animates: true) == .scanning(orbiting: true))
+    // Reduce Motion or a paused view: a still scanning pose, never a stepping orbit.
+    #expect(
+      TerrariumLayout.lensPose(isScanning: true, animates: false) == .scanning(orbiting: false))
+  }
+
   @Test func accessibilityLabelReadsTopToBottom() {
     let layers = TerrariumLayout.layerHeights(
       for: summary(
