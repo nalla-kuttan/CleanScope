@@ -20,7 +20,31 @@ public enum CountPhrase {
   }
 }
 
+/// Which face the Dashboard hero shows.
+public enum HeroState: Equatable, Sendable {
+  case idle, scanning, results, cleaned
+
+  /// The brand mark's growth stage for this state: lens only, stem, first leaf, both leaves.
+  public var sproutStage: Int {
+    switch self {
+    case .idle: 0
+    case .scanning: 1
+    case .results: 2
+    case .cleaned: 3
+    }
+  }
+}
+
 public enum StoragePresentation {
+  /// Scanning beats cleaned beats results beats idle.
+  public static func heroState(hasScanned: Bool, isScanning: Bool, cleanedThisSession: Bool)
+    -> HeroState
+  {
+    if isScanning { return .scanning }
+    if cleanedThisSession { return .cleaned }
+    return hasScanned ? .results : .idle
+  }
+
   public static func headline(hasScanned: Bool, isScanning: Bool, safeBytes: Int64) -> String {
     if isScanning { return "Looking for room to grow…" }
     guard hasScanned else { return "Let’s see where your space went." }
@@ -58,6 +82,16 @@ public enum ResultPresentation {
   public static func outermost(_ results: [ScanResult]) -> [ScanResult] {
     let paths = Set(results.map(\.normalizedPath))
     return results.filter { !hasAncestor($0.normalizedPath, in: paths) }
+  }
+
+  /// Results still on disk: leaves out the given ids and anything that sat inside one of those
+  /// items, so a trashed folder's nested results are not counted on their own afterwards.
+  public static func remaining(_ results: [ScanResult], excluding ids: Set<String>) -> [ScanResult] {
+    guard !ids.isEmpty else { return results }
+    let gonePaths = Set(results.filter { ids.contains($0.id) }.map(\.normalizedPath))
+    return results.filter {
+      !ids.contains($0.id) && !hasAncestor($0.normalizedPath, in: gonePaths)
+    }
   }
 
   public static func totalBytes(_ results: [ScanResult]) -> Int64 {

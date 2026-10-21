@@ -12,7 +12,8 @@
   /// collapses a few selected Storage Map tiles as if they were trashed, without touching files.
   /// `--map-fixture <N>` swaps in a synthetic N-item tree; `--map-benchmark` then times the map.
   /// `--snapshot-cleanup` seeds an in-memory cleanup of the largest quick wins before Last
-  /// Cleanup (no files are touched) and also captures its terrarium mid-compost.
+  /// Cleanup (no files are touched) and also captures its terrarium mid-compost, then the
+  /// Dashboard hero in its cleaned face (`dashboard-cleaned`).
   /// `--snapshot-select one|all` selects the largest eligible item, or every eligible item, before
   /// the tour so the toolbar basket shows a selection (nothing is cleaned). `--snapshot-flight`
   /// also selects one Ready to Delete item and captures the basket flight mid-air.
@@ -165,6 +166,10 @@
           capture(directory.appendingPathComponent("\(prefix)lastCleanup-mid-\(appearance).png"))
           try? await Task.sleep(nanoseconds: 1_800_000_000)
           capture(directory.appendingPathComponent("\(prefix)lastCleanup-\(appearance).png"))
+          // The Dashboard hero in its cleaned face, once the recovered figure has rolled.
+          model.destination = .dashboard
+          try? await Task.sleep(nanoseconds: 1_800_000_000)
+          capture(directory.appendingPathComponent("\(prefix)dashboard-cleaned-\(appearance).png"))
           continue
         }
         model.destination = destination
@@ -205,10 +210,30 @@
       }
 
       NSApp.windows.first(where: \.isVisible)?.setContentSize(NSSize(width: 820, height: 560))
+      // The Dashboard at the minimum width: as it opens, then scrolled to the bottom.
+      model.destination = .dashboard
+      try? await Task.sleep(nanoseconds: 900_000_000)
+      capture(directory.appendingPathComponent("\(prefix)minimum-dashboard-\(appearance).png"))
+      scrollMainContentToBottom()
+      try? await Task.sleep(nanoseconds: 600_000_000)
+      capture(directory.appendingPathComponent("\(prefix)minimum-dashboard-bottom-\(appearance).png"))
+      NSApp.windows.first(where: \.isVisible)?.setContentSize(NSSize(width: 820, height: 560))
       model.destination = .readyToDelete
       try? await Task.sleep(nanoseconds: 900_000_000)
       capture(directory.appendingPathComponent("\(prefix)minimum-\(appearance).png"))
       NSApp.terminate(nil)
+    }
+
+    /// Scrolls the tallest scroll view in the window (the detail page) to its end.
+    private static func scrollMainContentToBottom() {
+      guard let root = NSApp.windows.first(where: \.isVisible)?.contentView else { return }
+      let scrollViews = descendants(of: root).compactMap { $0 as? NSScrollView }
+      guard let page = scrollViews.max(by: {
+        ($0.documentView?.frame.height ?? 0) < ($1.documentView?.frame.height ?? 0)
+      }), let document = page.documentView else { return }
+      let y = max(document.frame.height - page.contentView.bounds.height, 0)
+      page.contentView.scroll(to: NSPoint(x: 0, y: document.isFlipped ? y : 0))
+      page.reflectScrolledClipView(page.contentView)
     }
 
     /// The sidebar's material can't be drawn in-process, so capture its list view alone.

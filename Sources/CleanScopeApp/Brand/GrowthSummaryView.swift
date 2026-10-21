@@ -1,8 +1,8 @@
 import CleanScopeCore
 import SwiftUI
 
-/// The dashboard's one summary surface: safe space first, review-needed space second,
-/// and the real disk it belongs to.
+/// The dashboard's detail surface under the hero: what the safe space is made of, the review
+/// space beside it, and the real disk it belongs to. The hero owns the headline figure.
 struct GrowthSummaryView: View {
   var summary: ScanSummary
   var safeCount: Int
@@ -12,32 +12,17 @@ struct GrowthSummaryView: View {
   var hasScanned: Bool
 
   private var reviewBytes: Int64 { summary.probablyUnusedBytes + summary.deleteIfAppUnusedBytes }
+  private var showsDetail: Bool { hasScanned || isScanning }
 
   var body: some View {
-    HStack(alignment: .top, spacing: 20) {
-      BrandMarkView(
-        size: 56, field: true, isDecorative: true,
-        growthStage: StoragePresentation.growthStage(
-          resultCount: summary.totalResults, isScanning: isScanning)
-      )
-
+    if showsDetail || disk != nil {
       VStack(alignment: .leading, spacing: 10) {
-        VStack(alignment: .leading, spacing: 2) {
-          Text("Safe to reclaim")
-            .font(.callout.weight(.medium))
+        if showsDetail {
+          Text(detailLine)
+            .font(.callout)
             .foregroundStyle(BrandTheme.textSecondary)
-          Text(hasScanned || isScanning ? ByteCount.string(summary.safeToDeleteBytes) : "—")
-            .font(.system(size: 30, weight: .bold, design: .rounded))
-            .monospacedDigit()
-            .foregroundStyle(BrandTheme.textPrimary)
-          if hasScanned || isScanning {
-            Text(detailLine)
-              .font(.callout)
-              .foregroundStyle(BrandTheme.textSecondary)
-              .fixedSize(horizontal: false, vertical: true)
-          }
+            .fixedSize(horizontal: false, vertical: true)
         }
-        .accessibilityElement(children: .combine)
 
         if let disk {
           DiskBar(disk: disk, safeBytes: summary.safeToDeleteBytes)
@@ -52,13 +37,13 @@ struct GrowthSummaryView: View {
           }
         }
       }
-      Spacer(minLength: 0)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .padding(20)
+      .background(
+        RoundedRectangle(cornerRadius: BrandTheme.radius, style: .continuous)
+          .fill(BrandTheme.surfaceRaised)
+      )
     }
-    .padding(20)
-    .background(
-      RoundedRectangle(cornerRadius: BrandTheme.radius, style: .continuous)
-        .fill(BrandTheme.surfaceRaised)
-    )
   }
 
   private var detailLine: String {

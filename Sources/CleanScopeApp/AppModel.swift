@@ -242,8 +242,26 @@ final class AppModel: ObservableObject {
   /// Ids of results the app has moved to the Trash or deleted since the current scan began. The
   /// Storage Map leaves their tiles out, as the scan's tree itself is not rewritten.
   @Published private(set) var trashedResultIDs: Set<String> = [] {
-    didSet { refreshTerrariumLayers() }
+    didSet { if trashedResultIDs != oldValue { recomputeDerived() } }
   }
+  /// True once a confirmed cleanup has moved at least one item since the current scan began; the
+  /// Dashboard hero shows its cleaned face while this holds.
+  @Published private(set) var cleanedSinceScan = false
+  /// The cleanup session whose recovered bytes have not rolled up on screen yet. The first
+  /// surface to show that session's figure rolls it, then calls `finishRoll`; every later
+  /// showing is static.
+  @Published private(set) var pendingRollSessionID: String?
+  /// A confirmed cleanup with at least one deleted item has happened and no scan has started
+  /// since.
+  var cleanedThisSession: Bool {
+    cleanedSinceScan && cleanupSession?.deletedItems.isEmpty == false
+  }
+
+  func finishRoll(_ sessionID: String) {
+    if pendingRollSessionID == sessionID { pendingRollSessionID = nil }
+  }
+  /// `streamedResults` without trashed items: what every count, total and list shows.
+  private(set) var visibleResults: [ScanResult] = []
   /// Category of the last result in the most recently flushed batch; nil until one arrives.
   @Published private(set) var latestStreamedCategory: SafetyCategory?
   @Published var permissionSummary: PermissionSummary?
@@ -366,7 +384,7 @@ final class AppModel: ObservableObject {
     statusMonitor.start()
     hungAppMonitor.setEnabled(loadedSettings.hungAppMonitoringEnabled, prompt: false)
     updatePressureTracking()
-    refreshTerrariumLayers()
+    recomputeDerived()
     Task { @MainActor [weak self] in self?.refreshTerrariumSnapshot() }
     Task { await checkForRuleUpdates() }
     ruleTimer = Timer.scheduledTimer(withTimeInterval: 3_600, repeats: true) { [weak self] _ in
@@ -377,7 +395,7 @@ final class AppModel: ObservableObject {
   var hasScanned: Bool { session != nil }
 
   func results(for destination: Destination) -> [ScanResult] {
-    streamedResults.filter {
+    visibleResults.filter {
       destination.includes($0, largeFileThreshold: settings.largeFileThresholdBytes) == true
     }
   }
@@ -633,6 +651,8 @@ final class AppModel: ObservableObject {
     isScanning = true
     scanProgress = 0
     trashedResultIDs = []
+    cleanedSinceScan = false
+    pendingRollSessionID = nil
     latestStreamedCategory = nil
     streamedResults = []
     pendingResults = []
@@ -773,6 +793,8 @@ final class AppModel: ObservableObject {
       debugMarkTrashed(Set(items.map(\.id)))
       terrariumBeforeCleanup = before
       cleanupSession = session
+      cleanedSinceScan = true
+      pendingRollSessionID = session.id
     }
 
     /// Replaces the session with a synthetic one for Storage Map checks (`--map-fixture`).
@@ -880,6 +902,10 @@ final class AppModel: ObservableObject {
     selection = plan.remainingSelection
     if let session = cleanupSession {
       trashedResultIDs.formUnion(session.deletedItems.map(\.scanResultId))
+      if !session.deletedItems.isEmpty {
+        cleanedSinceScan = true
+        pendingRollSessionID = session.id
+      }
     }
     refreshDisk()
     refreshTerrariumSnapshot()
@@ -902,11 +928,7 @@ final class AppModel: ObservableObject {
   }
 
   private func refreshTerrariumLayers() {
-    let remaining =
-      trashedResultIDs.isEmpty
-      ? summary
-      : ScanSummary(results: streamedResults.filter { !trashedResultIDs.contains($0.id) })
-    let next = TerrariumLayout.layerHeights(for: remaining, diskUsedBytes: disk?.usedBytes ?? 0)
+    let next = TerrariumLayout.layerHeights(for: summary, diskUsedBytes: disk?.usedBytes ?? 0)
     if next != terrariumLayers { terrariumLayers = next }
   }
 
@@ -981,10 +1003,12 @@ final class AppModel: ObservableObject {
   // MARK: - Helpers
 
   private func recomputeDerived() {
-    summary = ScanSummary(results: streamedResults)
+    // Items already moved to the Trash no longer count toward any figure.
+    visibleResults = ResultPresentation.remaining(streamedResults, excluding: trashedResultIDs)
+    summary = ScanSummary(results: visibleResults)
     defer { refreshTerrariumLayers() }
-    safeCount = streamedResults.filter { $0.category == .safeToDelete }.count
-    reviewCount = streamedResults.filter {
+    safeCount = visibleResults.filter { $0.category == .safeToDelete }.count
+    reviewCount = visibleResults.filter {
       $0.category == .probablyUnused || $0.category == .deleteIfAppUnused
     }.count
     var next: [Destination: Int] = [:]

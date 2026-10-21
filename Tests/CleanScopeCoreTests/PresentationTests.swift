@@ -113,6 +113,56 @@ import Testing
     #expect(deselected == [b.id])
   }
 
+  @Test func heroStatePriority() {
+    // Scanning beats cleaned beats results beats idle.
+    #expect(
+      StoragePresentation.heroState(hasScanned: true, isScanning: true, cleanedThisSession: true)
+        == .scanning)
+    #expect(
+      StoragePresentation.heroState(hasScanned: false, isScanning: true, cleanedThisSession: false)
+        == .scanning)
+    #expect(
+      StoragePresentation.heroState(hasScanned: true, isScanning: false, cleanedThisSession: true)
+        == .cleaned)
+    #expect(
+      StoragePresentation.heroState(hasScanned: true, isScanning: false, cleanedThisSession: false)
+        == .results)
+    #expect(
+      StoragePresentation.heroState(hasScanned: false, isScanning: false, cleanedThisSession: false)
+        == .idle)
+  }
+
+  @Test func heroSproutStagesFollowTheState() {
+    #expect(HeroState.idle.sproutStage == 0)
+    #expect(HeroState.scanning.sproutStage == 1)
+    #expect(HeroState.results.sproutStage == 2)
+    #expect(HeroState.cleaned.sproutStage == 3)
+  }
+
+  @Test func remainingResultsDropTrashedItemsAndWhatSatInsideThem() {
+    let folder = resultFixture(path: "/Users/me/Library/Caches/big")
+    let nested = resultFixture(path: "/Users/me/Library/Caches/big/inner")
+    let kept = resultFixture(path: "/Users/me/Library/Caches/kept")
+    let all = [folder, nested, kept]
+
+    let remaining = ResultPresentation.remaining(all, excluding: [folder.id])
+    #expect(remaining.map(\.id) == [kept.id])
+    #expect(ResultPresentation.remaining(all, excluding: []).count == 3)
+  }
+
+  @Test func summaryAfterCleanupLeavesOutTrashedBytes() {
+    let trashed = ScanResult.fixture(path: "/tmp/a", sizeBytes: 600, category: .safeToDelete)
+    let kept = ScanResult.fixture(path: "/tmp/b", sizeBytes: 400, category: .safeToDelete)
+    let review = ScanResult.fixture(path: "/tmp/c", sizeBytes: 50, category: .probablyUnused)
+
+    let summary = ScanSummary(
+      results: ResultPresentation.remaining([trashed, kept, review], excluding: [trashed.id]))
+
+    #expect(summary.safeToDeleteBytes == 400)
+    #expect(summary.probablyUnusedBytes == 50)
+    #expect(summary.totalResults == 2)
+  }
+
   @Test func cleanupPlanTouchesOnlyReviewedItems() async {
     let reviewed = [resultFixture(path: "/tmp/quick-a"), resultFixture(path: "/tmp/quick-b")]
     let selectedElsewhere = (0..<50).map { resultFixture(path: "/tmp/elsewhere-\($0)") }

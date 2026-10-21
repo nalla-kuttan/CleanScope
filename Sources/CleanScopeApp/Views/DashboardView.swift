@@ -19,14 +19,17 @@ struct DashboardView: View {
     let wins = quickWins
     ScrollView {
       VStack(alignment: .leading, spacing: 24) {
-        HStack(alignment: .center, spacing: 16) {
-          header
-          Spacer(minLength: 0)
-          TerrariumView(
-            layers: model.terrariumLayers, growthStage: model.terrariumGrowthStage,
-            mode: .dashboard, isScanning: model.isScanning, glowing: model.terrariumGlowingLayer
-          )
-          .frame(width: 360, height: 240)
+        // Hero beside the terrarium when there is room, otherwise the terrarium sits below it.
+        ViewThatFits(in: .horizontal) {
+          HStack(alignment: .center, spacing: 16) {
+            DashboardHero().frame(minWidth: 300, idealWidth: 300, maxWidth: .infinity, alignment: .leading)
+            Spacer(minLength: 0)
+            terrarium
+          }
+          VStack(alignment: .leading, spacing: 16) {
+            DashboardHero()
+            terrarium.frame(maxWidth: .infinity)
+          }
         }
 
         GrowthSummaryView(
@@ -66,49 +69,31 @@ struct DashboardView: View {
     }
   }
 
-  private var header: some View {
-    VStack(alignment: .leading, spacing: 4) {
-      Text(
-        StoragePresentation.headline(
-          hasScanned: model.hasScanned, isScanning: model.isScanning,
-          safeBytes: model.summary.safeToDeleteBytes)
-      )
-      .font(.system(size: 26, weight: .bold))
-      .foregroundStyle(BrandTheme.textPrimary)
-      .accessibilityAddTraits(.isHeader)
-
-      Text(subheadline)
-        .foregroundStyle(BrandTheme.textSecondary)
-    }
+  private var terrarium: some View {
+    TerrariumView(
+      layers: model.terrariumLayers, growthStage: model.terrariumGrowthStage,
+      mode: .dashboard, isScanning: model.isScanning, glowing: model.terrariumGlowingLayer
+    )
+    .frame(width: 360, height: 240)
   }
 
-  private var subheadline: String {
-    if model.isScanning {
-      return "\(CountPhrase.make(model.summary.totalResults, "item")) found so far."
-    }
-    guard model.hasScanned else {
-      return "CleanScope checks known cleanup locations. Nothing is removed until you review it."
-    }
-    if let line = StoragePresentation.reviewLine(count: model.reviewCount) { return line }
-    return StoragePresentation.reclaimCopy(bytes: model.summary.safeToDeleteBytes)
-  }
-
-  /// Plain links to every module that has an icon; wraps on narrow windows.
+  /// Plain links to every module that has an icon, in one row that scrolls sideways rather
+  /// than wrapping, so Quick wins stays near the top of the page.
   private var modulesRow: some View {
     VStack(alignment: .leading, spacing: 8) {
       Text("Modules")
         .font(.title3.weight(.semibold))
         .foregroundStyle(BrandTheme.textPrimary)
         .accessibilityAddTraits(.isHeader)
-      LazyVGrid(
-        columns: [GridItem(.adaptive(minimum: 170), spacing: 12, alignment: .leading)],
-        alignment: .leading, spacing: 8
-      ) {
-        ForEach(Self.moduleDestinations) { destination in
-          ModuleLink(destination: destination, count: count(for: destination)) {
-            model.destination = destination
+      ScrollView(.horizontal) {
+        HStack(spacing: 6) {
+          ForEach(Self.moduleDestinations) { destination in
+            ModuleLink(destination: destination, count: count(for: destination)) {
+              model.destination = destination
+            }
           }
         }
+        .padding(.vertical, 2)
       }
     }
   }
@@ -213,7 +198,7 @@ private struct ModuleLink: View {
     Button(action: action) {
       HStack(spacing: 10) {
         if let icon = destination.icon {
-          ModuleIcon(key: icon, size: 40)
+          ModuleIcon(key: icon, size: 32)
         }
         VStack(alignment: .leading, spacing: 0) {
           Text(destination.title)
@@ -226,8 +211,10 @@ private struct ModuleLink: View {
               .foregroundStyle(BrandTheme.textSecondary)
           }
         }
-        Spacer(minLength: 0)
       }
+      .padding(.horizontal, 8)
+      .padding(.vertical, 4)
+      .fixedSize()
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)

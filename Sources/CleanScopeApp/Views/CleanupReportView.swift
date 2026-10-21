@@ -9,6 +9,7 @@ struct CleanupReportView: View {
       VStack(alignment: .leading, spacing: 20) {
         if let cleanup = model.cleanupSession {
           CleanupCelebrationView(
+            sessionID: cleanup.id,
             recoveredBytes: cleanup.recoveredBytes,
             movedCount: cleanup.deletedItems.count
           )

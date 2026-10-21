@@ -2,8 +2,10 @@ import CleanScopeCore
 import SwiftUI
 
 struct CleanupCelebrationView: View {
+  var sessionID: String
   var recoveredBytes: Int64
   var movedCount: Int
+  @EnvironmentObject private var model: AppModel
   @EnvironmentObject private var motion: MotionPolicy
   @State private var isVisible = false
 
@@ -18,9 +20,11 @@ struct CleanupCelebrationView: View {
           .font(.title3.weight(.semibold))
           .foregroundStyle(BrandTheme.textPrimary)
         if movedCount > 0 {
-          Text("You found \(ByteCount.string(recoveredBytes)) of breathing room.")
+          RollingBytesText(
+            bytes: recoveredBytes, sessionID: sessionID,
+            rolls: model.pendingRollSessionID == sessionID
+          ) { "You found \(ByteCount.string($0)) of breathing room." }
             .font(.system(.title2, design: .rounded).weight(.bold))
-            .monospacedDigit()
             .foregroundStyle(BrandTheme.accentText)
         } else {
           Text("Every item stayed in place. The details are below.")
