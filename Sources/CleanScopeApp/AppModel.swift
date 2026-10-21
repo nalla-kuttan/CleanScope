@@ -4,6 +4,13 @@ import Foundation
 import ServiceManagement
 import SwiftUI
 
+/// A cleanup was confirmed while another was still running.
+struct CleanupBusyError: LocalizedError {
+  var errorDescription: String? {
+    "Nothing was removed. Wait for the current cleanup to finish, then review again."
+  }
+}
+
 @MainActor
 final class AppModel: ObservableObject {
   enum Destination: String, CaseIterable, Identifiable, Hashable {
@@ -227,6 +234,8 @@ final class AppModel: ObservableObject {
   /// True for the duration of `cleanup(_:)`; the harvest basket stays disabled meanwhile, so a
   /// second review can't start a cleanup that collides with this one.
   @Published private(set) var isCleaningUp = false
+  /// Help text on every cleanup entry point while `isCleaningUp`.
+  static let cleanupRunningNote = "A cleanup is already running"
   /// Fraction of top-level scan items finished: 0 at scan start, 1 once a scan completes. A
   /// cancelled scan leaves it where it stopped.
   @Published private(set) var scanProgress: Double = 0
@@ -842,7 +851,12 @@ final class AppModel: ObservableObject {
   func cleanup(
     _ items: [ScanResult], method: DeletionMethod? = nil, navigatesToReport: Bool = true
   ) async {
-    guard !isCleaningUp else { return }
+    // Every entry point is disabled while a cleanup runs; this backstop tells the user rather
+    // than letting a confirmed review vanish silently.
+    guard !isCleaningUp else {
+      report(Self.cleanupRunningNote, CleanupBusyError())
+      return
+    }
     isCleaningUp = true
     defer { isCleaningUp = false }
     let plan = ResultSelection.cleanupPlan(

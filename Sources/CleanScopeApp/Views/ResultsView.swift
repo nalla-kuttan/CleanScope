@@ -19,12 +19,16 @@ struct ResultsView: View {
     let rows = visibleRows(from: base)
     let selected = model.selectedResults()
     let selectionState = ResultSelection.state(visible: rows, selectedIDs: model.selection)
+    // Selection is global: items picked in other sections are still reviewed with this one.
+    let otherSections = BasketPresentation.selectedOutside(
+      selected: selected, visibleIDs: Set(base.map(\.id)))
 
     VStack(alignment: .leading, spacing: 0) {
       if base.isEmpty {
         emptyState
       } else {
-        header(rows: rows, selected: selected, state: selectionState)
+        header(
+          rows: rows, selected: selected, otherSections: otherSections, state: selectionState)
           // The leading inset lines the select-all checkbox up with the rows' checkbox column.
           .padding(.leading, 16.5)
           .padding(.trailing, 20)
@@ -44,7 +48,7 @@ struct ResultsView: View {
     .navigationTitle(destination.title)
     .navigationSubtitle(subtitle(base))
     .searchable(text: $searchQuery, placement: .toolbar, prompt: "Search names and paths")
-    .harvestBasketToolbar { review = ReviewRequest(items: $0) }
+    .harvestBasketToolbar(otherSections: otherSections) { review = ReviewRequest(items: $0) }
     .sheet(item: $detail) { result in
       ItemDetailView(result: model.currentResult(for: result))
     }
@@ -64,7 +68,7 @@ struct ResultsView: View {
   // MARK: - Header
 
   private func header(
-    rows: [ScanResult], selected: [ScanResult], state: VisibleSelectionState
+    rows: [ScanResult], selected: [ScanResult], otherSections: Int, state: VisibleSelectionState
   ) -> some View {
     HStack(alignment: .center, spacing: 12) {
       SelectionCheckbox(
@@ -86,6 +90,13 @@ struct ResultsView: View {
       }
 
       Spacer(minLength: 12)
+
+      if let others = BasketPresentation.otherSectionsPhrase(otherSections) {
+        Text(others)
+          .font(.callout)
+          .foregroundStyle(BrandTheme.textSecondary)
+          .monospacedDigit()
+      }
 
       if !selected.isEmpty {
         Button("Clear Selection") {
@@ -177,6 +188,8 @@ struct ResultsView: View {
       ) {
         review = ReviewRequest(items: eligible)
       }
+      .disabled(model.isCleaningUp)
+      .help(model.isCleaningUp ? AppModel.cleanupRunningNote : "")
     }
   }
 

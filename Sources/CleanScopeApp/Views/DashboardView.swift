@@ -138,6 +138,8 @@ struct DashboardView: View {
           Button("Review Quick Wins…") { review = ReviewRequest(items: wins) }
             .buttonStyle(.borderedProminent)
             .tint(BrandTheme.accent)
+            .disabled(model.isCleaningUp)
+            .help(model.isCleaningUp ? AppModel.cleanupRunningNote : "")
         }
       }
 

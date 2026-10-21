@@ -124,6 +124,8 @@ struct ItemDetailView: View {
         ) {
           review = ReviewRequest(items: [result])
         }
+        .disabled(model.isCleaningUp)
+        .help(model.isCleaningUp ? AppModel.cleanupRunningNote : "")
       }
 
       Button("Done") { dismiss() }

@@ -9,6 +9,17 @@ public enum BasketPresentation {
     newlySelected.first.map { [$0] } ?? []
   }
 
+  /// How many of `selected` are not among `visibleIDs`: items selected in other sections, which
+  /// the basket and the review still include.
+  public static func selectedOutside(selected: [ScanResult], visibleIDs: Set<String>) -> Int {
+    selected.reduce(0) { $0 + (visibleIDs.contains($1.id) ? 0 : 1) }
+  }
+
+  /// "211 selected in other sections", or nil when there are none.
+  public static func otherSectionsPhrase(_ count: Int) -> String? {
+    count > 0 ? "\(count.formatted()) selected in other sections" : nil
+  }
+
   /// The text on a flying chip: the item's name, with "+N" when the flight stands for more.
   public static func chipLabel(for flight: ScanResult, totalNewlySelected: Int) -> String {
     totalNewlySelected > 1

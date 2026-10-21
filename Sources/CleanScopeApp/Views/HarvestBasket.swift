@@ -10,6 +10,8 @@ import SwiftUI
 struct HarvestBasket: View {
   @EnvironmentObject private var model: AppModel
   @Environment(\.flightCenter) private var center
+  /// How many selected items are not listed in the current view; they are still in the basket.
+  var otherSections = 0
   /// Receives the items to review: `model.selectedResults()` at the moment of the click.
   var onReview: ([ScanResult]) -> Void
 
@@ -39,13 +41,14 @@ struct HarvestBasket: View {
         ? "Review selected items"
         : "Review \(CountPhrase.make(selected.count, "selected item")), \(bytes)"
     )
+    .accessibilityValue(BasketPresentation.otherSectionsPhrase(otherSections) ?? "")
     .accessibilityHint(reason ?? "Opens the cleanup review")
   }
 
   /// Why the basket can't be opened right now, if it can't.
   private func unavailableReason(_ selected: [ScanResult]) -> String? {
     if model.isScanning { return "Available once the scan finishes" }
-    if model.isCleaningUp { return "Available once the cleanup finishes" }
+    if model.isCleaningUp { return AppModel.cleanupRunningNote }
     if selected.isEmpty { return "Select items to review them for cleanup" }
     return nil
   }
@@ -53,18 +56,24 @@ struct HarvestBasket: View {
   private func help(_ selected: [ScanResult], reason: String?) -> String {
     if let reason { return reason }
     let count = CountPhrase.make(selected.count, "selected item")
-    return model.settings.deleteImmediately
+    let base =
+      model.settings.deleteImmediately
       ? "Review \(count) before deleting them permanently"
       : "Review \(count) before moving them to Trash"
+    guard let others = BasketPresentation.otherSectionsPhrase(otherSections) else { return base }
+    return "\(base) (\(others))"
   }
 }
 
 extension View {
-  /// Puts the harvest basket in the toolbar as the primary action.
-  func harvestBasketToolbar(onReview: @escaping ([ScanResult]) -> Void) -> some View {
+  /// Puts the harvest basket in the toolbar as the primary action. `otherSections` is how many
+  /// selected items this view doesn't list.
+  func harvestBasketToolbar(
+    otherSections: Int = 0, onReview: @escaping ([ScanResult]) -> Void
+  ) -> some View {
     toolbar {
       ToolbarItem(placement: .primaryAction) {
-        HarvestBasket(onReview: onReview)
+        HarvestBasket(otherSections: otherSections, onReview: onReview)
       }
     }
   }

@@ -63,7 +63,9 @@ struct StorageMapView: View {
     .padding(24)
     .background(BrandTheme.surface)
     .onChange(of: model.session?.id) { trail = [] }
-    .harvestBasketToolbar { review = ReviewRequest(items: $0) }
+    .harvestBasketToolbar(otherSections: selectedOutsideCurrentFolder) {
+      review = ReviewRequest(items: $0)
+    }
     .sheet(item: $review) { request in
       CleanupReviewSheet(items: request.items) { reviewed in
         Task { await cleanUp(reviewed) }
@@ -76,6 +78,16 @@ struct StorageMapView: View {
         Task { await debugCollapse(request) }
       }
     #endif
+  }
+
+  /// Selected items outside the folder on screen (the top level shows everything scanned). They
+  /// stay selected and are still reviewed with the rest.
+  private var selectedOutsideCurrentFolder: Int {
+    guard let current, !trail.isEmpty else { return 0 }
+    let selected = model.selectedResults()
+    let prefix = current.path + "/"
+    let inside = selected.filter { $0.path == current.path || $0.path.hasPrefix(prefix) }
+    return BasketPresentation.selectedOutside(selected: selected, visibleIDs: Set(inside.map(\.id)))
   }
 
   // MARK: - Scan sweep and collapse
@@ -156,6 +168,12 @@ struct StorageMapView: View {
           .foregroundStyle(BrandTheme.textSecondary)
       }
       Spacer()
+      if let others = BasketPresentation.otherSectionsPhrase(selectedOutsideCurrentFolder) {
+        Text(others)
+          .font(.system(.subheadline, design: .rounded))
+          .foregroundStyle(BrandTheme.textSecondary)
+          .monospacedDigit()
+      }
       Toggle("Show as list", isOn: $showsList)
         .toggleStyle(.switch)
         .controlSize(.small)

@@ -96,7 +96,8 @@ struct CleanupReviewSheet: View {
         } label: {
           Text(confirmButtonTitle)
         }
-        .disabled(items.isEmpty)
+        .disabled(items.isEmpty || model.isCleaningUp)
+        .help(model.isCleaningUp ? AppModel.cleanupRunningNote : "")
       }
     }
     .padding(20)

@@ -257,6 +257,26 @@ private actor TrashedPaths {
     #expect(BasketPresentation.flights(newlySelected: []).isEmpty)
   }
 
+  @Test func selectedOutsideCountsOnlyItemsNotInTheVisibleSection() {
+    let here = ScanResult.fixture(path: "/u/Library/Caches/A", sizeBytes: 1, category: .safeToDelete)
+    let alsoHere = ScanResult.fixture(path: "/u/Library/Caches/B", sizeBytes: 1, category: .safeToDelete)
+    let elsewhere = ScanResult.fixture(path: "/u/Downloads/C", sizeBytes: 1, category: .safeToDelete)
+    let other = ScanResult.fixture(path: "/u/Downloads/D", sizeBytes: 1, category: .safeToDelete)
+
+    let outside = BasketPresentation.selectedOutside(
+      selected: [here, elsewhere, other], visibleIDs: [here.id, alsoHere.id])
+
+    #expect(outside == 2)
+    #expect(BasketPresentation.selectedOutside(selected: [here], visibleIDs: [here.id]) == 0)
+    #expect(BasketPresentation.selectedOutside(selected: [], visibleIDs: [here.id]) == 0)
+  }
+
+  @Test func otherSectionsPhraseHidesAtZero() {
+    #expect(BasketPresentation.otherSectionsPhrase(0) == nil)
+    #expect(BasketPresentation.otherSectionsPhrase(1) == "1 selected in other sections")
+    #expect(BasketPresentation.otherSectionsPhrase(211) == "211 selected in other sections")
+  }
+
   @Test func chipLabelNamesTheItemAndCountsTheRest() {
     let item = ScanResult.fixture(path: "/u/Library/Caches/Brave", sizeBytes: 100, category: .safeToDelete)
 
