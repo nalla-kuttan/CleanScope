@@ -9,7 +9,6 @@ struct ScanTheatre: View {
   @EnvironmentObject private var motion: MotionPolicy
 
   @State private var theatre = ScanTheatreModel()
-  @State private var seenSequence: Int?
   @State private var particles = TheatreParticleStore()
   /// True from a spawn until its last particle has landed; the timeline only runs meanwhile.
   @State private var flying = false
@@ -40,7 +39,7 @@ struct ScanTheatre: View {
         .fill(BrandTheme.surfaceRaised)
     )
     .onAppear(perform: seed)
-    .onChange(of: model.lastBatchSequence) { _, sequence in absorbLatest(sequence) }
+    .onChange(of: model.lastBatchSequence) { absorbLatest() }
     .onDisappear { settleTask?.cancel() }
   }
 
@@ -53,17 +52,13 @@ struct ScanTheatre: View {
 
   /// Picks up whatever has already streamed in (the view can appear mid-scan), without particles.
   private func seed() {
-    guard seenSequence == nil else { return }
-    var seeded = ScanTheatreModel()
-    _ = seeded.absorb(model.streamedResults)
-    theatre = seeded
-    seenSequence = model.lastBatchSequence
+    _ = theatre.sync(with: model.streamedResults)
   }
 
-  private func absorbLatest(_ sequence: Int) {
-    guard seenSequence != sequence else { return }
-    seenSequence = sequence
-    let jars = theatre.absorb(model.lastBatch)
+  /// Counts everything `streamedResults` gained since the last call, so a flush that lands
+  /// between renders is never skipped; the jars always match the hero's count.
+  private func absorbLatest() {
+    let jars = theatre.sync(with: model.streamedResults)
     guard motion.allowsAmbientMotion, !jars.isEmpty else { return }
     particles.spawn(jars, at: Date.timeIntervalSinceReferenceDate)
     flying = true

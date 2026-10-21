@@ -23,12 +23,25 @@ public struct ScanTheatreModel: Equatable, Sendable {
   public private(set) var counts: [TheatreJar: Int] = Dictionary(
     uniqueKeysWithValues: TheatreJar.allCases.map { ($0, 0) })
 
+  /// How many of the scan's streamed results have been counted, so `sync` takes each exactly once.
+  public private(set) var absorbedCount = 0
+
   public init() {}
+
+  /// Brings the counts up to date with the scan's full streamed list: counts the results past
+  /// `absorbedCount` (however many batches arrived since the last call) and returns their particles.
+  /// A list shorter than what was counted means a new scan began, so the counts start over.
+  public mutating func sync(with results: [ScanResult]) -> [TheatreJar] {
+    if results.count < absorbedCount { self = ScanTheatreModel() }
+    guard results.count > absorbedCount else { return [] }
+    return absorb(Array(results[absorbedCount...]))
+  }
 
   /// Counts every result in the batch and returns the jars to fly particles to: one per result,
   /// the first `particleCap` of them.
   public mutating func absorb(_ batch: [ScanResult]) -> [TheatreJar] {
     var particles: [TheatreJar] = []
+    absorbedCount += batch.count
     for result in batch {
       let jar = TheatreJar(category: result.category)
       counts[jar, default: 0] += 1

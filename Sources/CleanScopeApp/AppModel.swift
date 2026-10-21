@@ -264,10 +264,7 @@ final class AppModel: ObservableObject {
   private(set) var visibleResults: [ScanResult] = []
   /// Category of the last result in the most recently flushed batch; nil until one arrives.
   @Published private(set) var latestStreamedCategory: SafetyCategory?
-  /// The results of the most recently flushed batch, for the scan theatre's particles. Empty
-  /// outside a scan.
-  @Published private(set) var lastBatch: [ScanResult] = []
-  /// Bumps with every flush, so a view can tell a new batch from a re-render of the same one.
+  /// Bumps with every flush, so the scan theatre knows to count what `streamedResults` gained.
   @Published private(set) var lastBatchSequence = 0
   /// The path being scanned: the path of the last result in the latest batch (the scanner
   /// reports results, not a current directory). Nil outside a scan.
@@ -662,7 +659,6 @@ final class AppModel: ObservableObject {
     cleanedSinceScan = false
     pendingRollSessionID = nil
     latestStreamedCategory = nil
-    lastBatch = []
     lastBatchSequence = 0
     currentScanPath = nil
     streamedResults = []
@@ -717,7 +713,6 @@ final class AppModel: ObservableObject {
     }
     scanner = nil
     if completed.status == .completed { scanProgress = 1 }
-    lastBatch = []
     currentScanPath = nil
     isScanning = false
     refreshTerrariumSnapshot()
@@ -756,7 +751,6 @@ final class AppModel: ObservableObject {
       flushScheduled = false
       guard isScanning, !pendingResults.isEmpty else { return }
       latestStreamedCategory = pendingResults.last?.category
-      lastBatch = pendingResults
       lastBatchSequence += 1
       currentScanPath = pendingResults.last?.path
       streamedResults.append(contentsOf: pendingResults)
@@ -776,7 +770,6 @@ final class AppModel: ObservableObject {
       scanProgress = fraction
       streamedResults = shown.map { ExclusionRule.applying(exclusions, to: $0) }
       latestStreamedCategory = shown.last?.category
-      lastBatch = cancelled ? [] : streamedResults
       lastBatchSequence += 1
       currentScanPath = cancelled ? nil : shown.last?.path
     }
