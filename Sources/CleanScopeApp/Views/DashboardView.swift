@@ -7,16 +7,8 @@ struct DashboardView: View {
   @State private var detail: ScanResult?
   @State private var review: ReviewRequest?
 
-  private var quickWins: [ScanResult] {
-    Array(
-      ResultPresentation.outermost(model.results(for: .readyToDelete))
-        .sorted { $0.sizeBytes > $1.sizeBytes }
-        .prefix(6)
-    )
-  }
-
   var body: some View {
-    let wins = quickWins
+    let wins = model.quickWins
     ScrollView {
       VStack(alignment: .leading, spacing: 24) {
         // Hero beside the terrarium when there is room, otherwise the terrarium sits below it.

@@ -418,6 +418,11 @@ public struct ClassificationRule: Identifiable, Codable, Equatable, Sendable {
     case modifiedAtLeastDaysAgo(Int)
     /// Case-insensitive regular expression tested against the item name.
     case nameMatches(String)
+    /// Case-insensitive regular expression tested against the normalized path.
+    case pathMatches(String)
+    /// True when the item's folder also holds an entry with one of these names
+    /// (case-insensitive). Only the scanner knows siblings, so it is false elsewhere.
+    case siblingNamed([String])
     case all([Matcher])
     case any([Matcher])
     case not(Matcher)

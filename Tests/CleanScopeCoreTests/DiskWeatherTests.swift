@@ -5,14 +5,14 @@ import Testing
 @Suite struct DiskWeatherTests {
   @Test func weatherCopyThresholds() {
     #expect(
-      StoragePresentation.weatherLine(usedFraction: 0.69, availableBytes: 90_000_000_000, safeBytes: 0)
+      StoragePresentation.weatherLine(usedFraction: 0.69, availableBytes: 90_000_000_000, quickWinBytes: 0)
         == "Plenty of room.")
     #expect(
-      StoragePresentation.weatherLine(usedFraction: 0.70, availableBytes: 70_000_000_000, safeBytes: 0)
+      StoragePresentation.weatherLine(usedFraction: 0.70, availableBytes: 70_000_000_000, quickWinBytes: 0)
         == "Getting cozy.")
     #expect(
       StoragePresentation.weatherLine(
-        usedFraction: 0.88, availableBytes: 4_000_000_000, safeBytes: 1_850_000_000)
+        usedFraction: 0.88, availableBytes: 4_000_000_000, quickWinBytes: 1_850_000_000)
         == "Room is tight. 4 GB available. Quick wins can free 1.85 GB without touching your files.")
   }
 
@@ -20,7 +20,7 @@ import Testing
     func line(_ state: HeroState) -> String {
       StoragePresentation.heroSubline(
         state: state, itemsFound: 3, usedFraction: 0.75, availableBytes: 60_000_000_000,
-        safeBytes: 1_000_000_000)
+        quickWinBytes: 1_000_000_000)
     }
     #expect(
       line(.idle)
@@ -32,7 +32,7 @@ import Testing
 
   @Test func tightRoomWithNothingSafeMakesNoPromise() {
     let line = StoragePresentation.weatherLine(
-      usedFraction: 0.95, availableBytes: 4_000_000_000, safeBytes: 0)
+      usedFraction: 0.95, availableBytes: 4_000_000_000, quickWinBytes: 0)
     #expect(line == "Room is tight. 4 GB available.")
     #expect(!line.contains("free"))
   }
@@ -41,7 +41,7 @@ import Testing
     let fraction = DiskWeather.usedFraction(totalBytes: 0, availableBytes: 0)
     #expect(fraction == 0)
     #expect(
-      StoragePresentation.weatherLine(usedFraction: fraction, availableBytes: 0, safeBytes: 0)
+      StoragePresentation.weatherLine(usedFraction: fraction, availableBytes: 0, quickWinBytes: 0)
         == "Plenty of room.")
   }
 

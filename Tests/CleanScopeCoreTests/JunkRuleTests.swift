@@ -98,6 +98,39 @@ import Testing
       classify("/private/var/folders/ab/xyz/C/com.example").category == .safeToDelete)
   }
 
+  @Test func onlyCacheAndTempFoldersUnderVarFoldersAreSafe() {
+    #expect(classify("/private/var/folders/ab/xyz/T/com.example").category == .safeToDelete)
+    #expect(classify("/var/folders/ab/xyz/C/com.example").category == .safeToDelete)
+    // `0` holds live per-user databases, such as Notification Center's.
+    let userData = classify("/private/var/folders/ab/xyz/0/com.apple.notificationcenter")
+    #expect(userData.category != .safeToDelete)
+  }
+
+  @Test func onlyTheSystemTmpFolderIsTemporary() {
+    #expect(classify("/private/tmp/build-123").category == .safeToDelete)
+    #expect(classify("/tmp/build-123").category == .safeToDelete)
+    for path in ["/Users/me/tmp/thesis-drafts", "/Users/me/Downloads/project/tmp"] {
+      #expect(classify(path).category != .safeToDelete, Comment(rawValue: path))
+    }
+  }
+
+  @Test func toolInstallsInCachesAreNotReadyToDelete() {
+    let paths = [
+      "/Users/me/Library/Caches/ms-playwright",
+      "/Users/me/Library/Caches/ms-playwright/chromium-1140",
+      "/Users/me/Library/Caches/Cypress",
+      "/Users/me/Library/Caches/pypoetry/virtualenvs/app-x1y2-py3.12",
+    ]
+    for path in paths {
+      let result = classify(path)
+      #expect(result.category == .deleteIfAppUnused, Comment(rawValue: path))
+      #expect(!ResultPresentation.isReadyToDeleteCache(result), Comment(rawValue: path))
+    }
+    // Poetry's download cache, beside its virtualenvs, is still an ordinary cache.
+    let cache = classify("/Users/me/Library/Caches/pypoetry/cache")
+    #expect(ResultPresentation.isReadyToDeleteCache(cache))
+  }
+
   @Test func appStoreCachesAreNamed() {
     for name in ["com.apple.appstoreagent", "com.apple.appstorecomponentsd"] {
       let result = classify("/private/var/folders/d2/abc/C/\(name)")

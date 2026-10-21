@@ -158,6 +158,29 @@ import Testing
     #expect(session.skippedPaths.contains { $0.reason == .protectedByMacOS })
   }
 
+  @Test func buildFolderIsGeneratedOnlyBesideAProjectMarker() async throws {
+    let root = try makeTempDirectory()
+    let project = root.appendingPathComponent("app")
+    let loose = root.appendingPathComponent("photos")
+    for folder in [project, loose] {
+      let build = folder.appendingPathComponent("build")
+      try FileManager.default.createDirectory(at: build, withIntermediateDirectories: true)
+      try Data(repeating: 1, count: 4096).write(to: build.appendingPathComponent("blob"))
+    }
+    try Data("{}".utf8).write(to: project.appendingPathComponent("package.json"))
+
+    let session = await ScannerService(
+      classifier: ClassificationService(), largeFileThresholdBytes: 1_000
+    ).scan(paths: [root.path], mode: .full, settings: .default) { _ in }
+
+    let builds = session.results.filter { $0.name == "build" && $0.itemType == .folder }
+    let projectBuild = builds.first { $0.normalizedPath.contains("/app/build") }
+    let looseBuild = builds.first { $0.normalizedPath.contains("/photos/build") }
+    #expect(projectBuild?.ruleId == "safe.generated-folders")
+    #expect(looseBuild != nil)
+    #expect(looseBuild?.ruleId != "safe.generated-folders")
+  }
+
   @Test func knownCacheFoldersOutsideCachesAreEmitted() async throws {
     let root = try makeTempDirectory()
     let support = root.appendingPathComponent("Library/Application Support/Slack")

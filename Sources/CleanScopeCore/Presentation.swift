@@ -61,7 +61,7 @@ public enum StoragePresentation {
   /// scanning, and the disk weather once there are results (or a cleanup).
   public static func heroSubline(
     state: HeroState, itemsFound: Int, usedFraction: Double, availableBytes: Int64,
-    safeBytes: Int64
+    quickWinBytes: Int64
   ) -> String {
     switch state {
     case .idle:
@@ -70,20 +70,20 @@ public enum StoragePresentation {
       return "\(CountPhrase.make(itemsFound, "item")) found so far."
     case .results, .cleaned:
       return weatherLine(
-        usedFraction: usedFraction, availableBytes: availableBytes, safeBytes: safeBytes)
+        usedFraction: usedFraction, availableBytes: availableBytes, quickWinBytes: quickWinBytes)
     }
   }
 
   /// The Dashboard's calm disk-weather line. Only the tightest tier quotes figures, and it
   /// promises quick wins only when there are some.
-  public static func weatherLine(usedFraction: Double, availableBytes: Int64, safeBytes: Int64)
+  public static func weatherLine(usedFraction: Double, availableBytes: Int64, quickWinBytes: Int64)
     -> String
   {
     if usedFraction < 0.70 { return "Plenty of room." }
     if usedFraction < 0.88 { return "Getting cozy." }
     var line = "Room is tight. \(ByteCount.string(availableBytes)) available."
-    if safeBytes > 0 {
-      line += " Quick wins can free \(ByteCount.string(safeBytes)) without touching your files."
+    if quickWinBytes > 0 {
+      line += " Quick wins can free \(ByteCount.string(quickWinBytes)) without touching your files."
     }
     return line
   }

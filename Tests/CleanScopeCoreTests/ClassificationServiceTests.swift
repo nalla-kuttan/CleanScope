@@ -60,8 +60,6 @@ import Testing
     let paths = [
       "/Users/me/Library/Developer/Xcode/DerivedData/App",
       "/Users/me/project/.next",
-      "/Users/me/project/build",
-      "/Users/me/project/target",
       "/Users/me/project/__pycache__",
       "/Users/me/project/.dart_tool",
     ]
@@ -70,6 +68,29 @@ import Testing
       let result = service.classify(
         ClassifiedItemInput(path: path, sizeBytes: 100, itemType: .folder))
       #expect(result.category == .safeToDelete, Comment(rawValue: path))
+    }
+  }
+
+  @Test func buildDistAndTargetNeedAProjectMarker() {
+    let marked = [
+      ("/Users/me/project/build", "build.gradle"),
+      ("/Users/me/project/dist", "package.json"),
+      ("/Users/me/project/target", "Cargo.toml"),
+    ]
+    for (path, marker) in marked {
+      let result = service.classify(
+        ClassifiedItemInput(
+          path: path, sizeBytes: 100, itemType: .folder, siblingNames: [marker, "README.md"]))
+      #expect(result.category == .safeToDelete, Comment(rawValue: path))
+      #expect(result.ruleId == "safe.generated-folders", Comment(rawValue: path))
+    }
+
+    // The same names with nothing marking a project are ordinary folders.
+    for path in ["/Users/me/Movies/build", "/Users/me/Downloads/dist", "/Users/Shared/target"] {
+      let result = service.classify(
+        ClassifiedItemInput(
+          path: path, sizeBytes: 100, itemType: .folder, siblingNames: ["notes.txt"]))
+      #expect(result.category != .safeToDelete, Comment(rawValue: path))
     }
   }
 

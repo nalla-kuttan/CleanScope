@@ -535,7 +535,8 @@ private struct TreeWalker: Sendable {
           itemType: .folder,
           lastModified: folder.lastModified,
           isProtected: folder.isProtected,
-          requiresAdmin: parentIsReadOnly(url)
+          requiresAdmin: parentIsReadOnly(url),
+          siblingNames: siblingNames(of: url)
         ))
     }
     if listed { return result() }
@@ -576,6 +577,14 @@ private struct TreeWalker: Sendable {
     if bytes >= largeFileThresholdBytes { return true }
     let path = url.path
     return bytes > 0 && (path.hasPrefix("/private/var/log/") || path.hasPrefix("/var/log/"))
+  }
+
+  /// The parent folder's entries, read only for folders whose rule needs a project marker.
+  private func siblingNames(of url: URL) -> Set<String> {
+    let name = url.lastPathComponent.lowercased()
+    guard ClassificationService.markerGatedBuildFolderNames.contains(name) else { return [] }
+    let parent = url.deletingLastPathComponent().path
+    return Set((try? FileManager.default.contentsOfDirectory(atPath: parent)) ?? [])
   }
 
   private func parentIsReadOnly(_ url: URL) -> Bool {

@@ -14,6 +14,8 @@ public struct ClassifiedItemInput: Sendable {
   public var isCloudOnly: Bool
   public var cloudOnlyBytes: Int64
   public var requiresAdmin: Bool
+  /// Names of the other entries in the item's folder, for rules that need a project marker.
+  public var siblingNames: Set<String>
 
   public init(
     path: String,
@@ -24,7 +26,8 @@ public struct ClassifiedItemInput: Sendable {
     isExcluded: Bool = false,
     isCloudOnly: Bool = false,
     cloudOnlyBytes: Int64 = 0,
-    requiresAdmin: Bool = false
+    requiresAdmin: Bool = false,
+    siblingNames: Set<String> = []
   ) {
     self.path = path
     self.sizeBytes = sizeBytes
@@ -35,6 +38,7 @@ public struct ClassifiedItemInput: Sendable {
     self.isCloudOnly = isCloudOnly
     self.cloudOnlyBytes = cloudOnlyBytes
     self.requiresAdmin = requiresAdmin
+    self.siblingNames = siblingNames
   }
 }
 
@@ -48,6 +52,7 @@ public struct ClassificationService: Sendable {
     var fileExtension: String?
     var itemType: ItemType
     var lastModified: Date?
+    var siblingNames: Set<String>
     var now: Date
   }
 
@@ -98,6 +103,21 @@ public struct ClassificationService: Sendable {
   private static let systemLogPrefix: ClassificationRule.Matcher = .any([
     .pathPrefix("/private/var/log/"), .pathPrefix("/var/log/"),
   ])
+  /// The per-user cache (`C`) and temporary (`T`) folders under `/var/folders`. The sibling
+  /// `0` folder holds live databases such as Notification Center's, so it is not matched.
+  private static let darwinCacheOrTemp: ClassificationRule.Matcher = .pathMatches(
+    #"^(/private)?/var/folders/[^/]+/[^/]+/[ct]/."#)
+
+  /// Generated-folder names that are also ordinary words, so they need a project marker beside them.
+  public static let markerGatedBuildFolderNames = ["build", "dist", "target"]
+
+  /// Files that show a folder's parent is a software project whose build output can be rebuilt.
+  public static let projectMarkerNames = [
+    "package.json", "cargo.toml", "pom.xml", "build.sbt", "build.gradle", "build.gradle.kts",
+    "settings.gradle", "settings.gradle.kts", "cmakelists.txt", "meson.build", "pubspec.yaml",
+    "pyproject.toml", "setup.py", "package.swift",
+  ]
+
   private static let rotatedLogName: ClassificationRule.Matcher = .nameMatches(
     #"\.\d+\.(gz|bz2)$"#)
 
@@ -261,9 +281,9 @@ public struct ClassificationService: Sendable {
       matcher: .any([
         .pathContains("/library/caches/"),
         .pathContains("/library/logs/"),
-        .pathContains("/private/var/folders/"),
-        .pathPrefix("/var/folders/"),
-        .pathComponent("tmp"),
+        darwinCacheOrTemp,
+        .pathPrefix("/tmp/"),
+        .pathPrefix("/private/tmp/"),
         .pathContains("/library/developer/xcode/deriveddata/"),
       ]),
       category: .safeToDelete,
@@ -284,9 +304,11 @@ public struct ClassificationService: Sendable {
           .nameEquals(".turbo"),
           .nameEquals(".vite"),
           .nameEquals("deriveddata"),
-          .nameEquals("target"),
-          .nameEquals("build"),
-          .nameEquals("dist"),
+          // Common words, so only beside a file that marks a project.
+          .all([
+            .any(markerGatedBuildFolderNames.map { .nameEquals($0) }),
+            .siblingNamed(projectMarkerNames),
+          ]),
         ]),
       ]),
       category: .safeToDelete,
@@ -455,6 +477,19 @@ public struct ClassificationService: Sendable {
       riskNote: "This item looks unused based on age and location. Review it before deleting."
     ),
     ClassificationRule(
+      id: "tool.cache-installs",
+      name: "Developer tool install in Caches",
+      matcher: .pathMatches(
+        #"/library/caches/(ms-playwright|ms-playwright-go|cypress|pypoetry/virtualenvs)(/|$)"#),
+      category: .deleteIfAppUnused,
+      confidence: .high,
+      specificity: 90,
+      reason: "Browsers or environments a developer tool installed",
+      riskNote:
+        "Tests or projects that use this tool stop working until you reinstall what it downloaded.",
+      ownerTool: "Developer tools"
+    ),
+    ClassificationRule(
       id: "tool.docker-volumes",
       name: "Docker volume",
       matcher: .pathContains("/.docker/volumes/"),
@@ -600,6 +635,7 @@ public struct ClassificationService: Sendable {
       fileExtension: fileExtension,
       itemType: input.itemType,
       lastModified: input.lastModified,
+      siblingNames: Set(input.siblingNames.map { $0.lowercased() }),
       now: now()
     )
   }
@@ -625,6 +661,11 @@ public struct ClassificationService: Sendable {
     case .nameMatches(let pattern):
       return context.name.range(
         of: pattern, options: [.regularExpression, .caseInsensitive]) != nil
+    case .pathMatches(let pattern):
+      return context.normalizedPath.range(
+        of: pattern, options: [.regularExpression, .caseInsensitive]) != nil
+    case .siblingNamed(let names):
+      return names.contains { context.siblingNames.contains($0.lowercased()) }
     case .all(let matchers):
       return matchers.allSatisfy { matches($0, context: context) }
     case .any(let matchers):

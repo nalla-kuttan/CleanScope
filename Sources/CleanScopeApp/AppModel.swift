@@ -436,6 +436,15 @@ final class AppModel: ObservableObject {
     }
   }
 
+  /// The Dashboard's Quick wins: the largest Ready to Delete caches, with nested results
+  /// folded into their folder so no byte is counted twice.
+  var quickWins: [ScanResult] {
+    Array(
+      ResultPresentation.outermost(results(for: .readyToDelete))
+        .sorted { $0.sizeBytes > $1.sizeBytes }
+        .prefix(6))
+  }
+
   func currentResult(for result: ScanResult) -> ScanResult {
     streamedResults.first(where: { $0.id == result.id }) ?? result
   }
@@ -819,10 +828,7 @@ final class AppModel: ObservableObject {
     /// Cleanup snapshot (`--snapshot-cleanup`). It never calls `DeletionService` and writes no
     /// files: the session and log entry live in memory only.
     func debugSeedCleanup() {
-      let items = Array(
-        ResultPresentation.outermost(results(for: .readyToDelete))
-          .sorted { $0.sizeBytes > $1.sizeBytes }
-          .prefix(6))
+      let items = quickWins
       guard !items.isEmpty else { return }
       let before = TerrariumState(layers: terrariumLayers, growthStage: terrariumGrowthStage)
       let available = disk?.availableBytes ?? 0

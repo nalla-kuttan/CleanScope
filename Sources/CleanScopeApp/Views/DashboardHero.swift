@@ -106,7 +106,7 @@ struct DashboardHero: View {
       state: state, itemsFound: model.summary.totalResults,
       usedFraction: model.weatherUsedFraction,
       availableBytes: model.weatherDisk?.availableBytes ?? 0,
-      safeBytes: model.summary.safeToDeleteBytes)
+      quickWinBytes: model.quickWins.reduce(0) { $0 + $1.sizeBytes })
   }
 }
 
