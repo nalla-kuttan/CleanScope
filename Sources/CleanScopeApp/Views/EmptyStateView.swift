@@ -10,6 +10,9 @@ struct EmptyStateView: View {
   var usesBrandMark = false
   var brandGrowthStage = 3
   var commandLabel: String?
+  /// Disables the command button, for example Start Scan while a cleanup runs.
+  var isActionDisabled = false
+  var actionHelp = ""
   var action: (() -> Void)?
 
   var body: some View {
@@ -39,6 +42,8 @@ struct EmptyStateView: View {
           .buttonStyle(.borderedProminent)
           .tint(BrandTheme.accent)
           .controlSize(.large)
+          .disabled(isActionDisabled)
+          .help(actionHelp)
           .padding(.top, 6)
       }
     }

@@ -229,6 +229,10 @@ final class AppModel: ObservableObject {
     didSet { recomputeDerived() }
   }
   @Published var selection: Set<String> = []
+  /// True when the latest change to `selection` was made by the app (scan-completion
+  /// preselection), not by the user. The basket flies no chip for such a change. Every
+  /// user-facing selection method clears it before changing the selection.
+  private(set) var selectionChangeIsAutomatic = false
   @Published var cleanupSession: CleanupSession?
   /// How `cleanupSession`'s items left: the Trash, or permanent deletion. Recorded when the
   /// cleanup runs, so copy follows what happened rather than the current setting.
@@ -237,8 +241,12 @@ final class AppModel: ObservableObject {
   /// True for the duration of `cleanup(_:)`; the harvest basket stays disabled meanwhile, so a
   /// second review can't start a cleanup that collides with this one.
   @Published private(set) var isCleaningUp = false
-  /// Help text on every cleanup entry point while `isCleaningUp`.
+  /// Help text on every cleanup and scan entry point while `isCleaningUp`.
   static let cleanupRunningNote = "A cleanup is already running"
+  /// False while a scan or a cleanup runs; every Start Scan control is disabled then.
+  var canStartScan: Bool { !isScanning && !isCleaningUp }
+  /// Help for a Start Scan control: why it is disabled during a cleanup, else empty.
+  var scanBlockedHelp: String { isCleaningUp ? Self.cleanupRunningNote : "" }
   /// Fraction of top-level scan items finished: 0 at scan start, 1 once a scan completes. A
   /// cancelled scan leaves it where it stopped.
   @Published private(set) var scanProgress: Double = 0
@@ -664,6 +672,7 @@ final class AppModel: ObservableObject {
 
   /// Scans an external drive's root, including hidden folders such as `.Trashes`.
   func scanDrive(at path: String) async {
+    guard canStartScan else { return }
     var driveSettings = settings
     driveSettings.scanHiddenFolders = true
     destination = .safeCleanup
@@ -674,7 +683,8 @@ final class AppModel: ObservableObject {
   func startScan(
     paths: [String], mode: ScanMode, settings scanSettings: CleanScopeCore.Settings? = nil
   ) async {
-    guard !isScanning else { return }
+    // A scan resets the results and selection a running cleanup is working from.
+    guard canStartScan else { return }
     let scanSettings = scanSettings ?? settings
     isScanning = true
     scanProgress = 0
@@ -726,6 +736,7 @@ final class AppModel: ObservableObject {
     if settings.preselectSafeCaches && completed.status == .completed {
       // Built from the exclusion-applied results without trashed items (or anything inside a
       // trashed folder), so neither excluded nor already-removed items are preselected.
+      selectionChangeIsAutomatic = true
       selection = ResultPresentation.preselection(for: visibleResults)
     }
     permissionSummary = permissionService.summary(skippedPaths: completed.skippedPaths)
@@ -839,6 +850,7 @@ final class AppModel: ObservableObject {
       session = fixture
       trashedResultIDs = []
       streamedResults = fixture.results
+      selectionChangeIsAutomatic = true
       selection = fixtureSelection
     }
   #endif
@@ -870,6 +882,7 @@ final class AppModel: ObservableObject {
   }
 
   func setSelection(_ isSelected: Bool, for result: ScanResult) {
+    selectionChangeIsAutomatic = false
     guard result.canDelete, !result.isExcluded else {
       selection.remove(result.id)
       return
@@ -883,10 +896,12 @@ final class AppModel: ObservableObject {
   }
 
   func setSelection(_ isSelected: Bool, for results: [ScanResult]) {
+    selectionChangeIsAutomatic = false
     selection = ResultSelection.updating(selection, with: results, isSelected: isSelected)
   }
 
   func clearSelection() {
+    selectionChangeIsAutomatic = false
     selection.removeAll()
   }
 

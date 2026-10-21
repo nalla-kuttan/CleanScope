@@ -43,7 +43,8 @@ struct CleanScopeApp: App {
         Button("Start Scan") {
           Task { await model.startScan() }
         }
-        .disabled(model.isScanning)
+        .disabled(!model.canStartScan)
+        .help(model.scanBlockedHelp)
         .keyboardShortcut("r", modifiers: [.command])
 
         Button("Cancel Scan") {

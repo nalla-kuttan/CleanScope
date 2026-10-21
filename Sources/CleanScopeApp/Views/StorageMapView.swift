@@ -53,7 +53,9 @@ struct StorageMapView: View {
             ? "The map appears when the scan finishes."
             : "The Storage Map shows the folders from your latest scan, sized by how much space they use.",
           icon: .map,
-          commandLabel: model.isScanning ? nil : "Start Scan"
+          commandLabel: model.isScanning ? nil : "Start Scan",
+          isActionDisabled: !model.canStartScan,
+          actionHelp: model.scanBlockedHelp
         ) {
           Task {
             await model.startScan(mode: model.settings.scanDeveloperFolders ? .developer : .limited)

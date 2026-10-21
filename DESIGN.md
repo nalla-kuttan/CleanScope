@@ -122,7 +122,7 @@ Views read these through the environment object and never check Reduce Motion th
 
 | Surface | Motion | Duration | Reduce Motion |
 | --- | --- | --- | --- |
-| Transitions | `BrandTheme.animation`: ease-out | 200 ms | None |
+| Transitions | `MotionPolicy.animation(_:)` (default ease-out) | 200 ms | None |
 | Module icon | Hover loop, tilt toward pointer (max 10°) | 18 frames at 30 fps, tilt 150 ms | Still image |
 | Storage Map lens | Follows the pointer; rests on the largest selectable tile | Follows input | Same (it is input, not decoration) |
 | Storage Map sweep | Tiles not yet reached draw as outlines; a light band marks `scanProgress` | Follows the scan | Outlines, no band |
@@ -207,10 +207,10 @@ Counts always inflect (`CountPhrase.make`): “1 item”, “2,709 items”. Des
 
 - Native `Table` with sortable Name, Size, Safety and Modified columns, plus a leading cleanup checkbox column that stays separate from row highlight.
 - Shift-click on checkboxes selects an eligible range. Double-click or Return opens details. The context menu offers details, Finder, select/deselect for cleanup, exclude, and Move to Trash….
-- `.searchable` in the toolbar. Review Cleanup… is the toolbar primary action.
+- `.searchable` in the toolbar. The harvest basket is the toolbar primary action.
 - Ineligible rows keep a disabled checkbox whose tooltip and VoiceOver hint explain why.
 - The header states the selection and, when part of it is outside the current section, "N selected in other sections". Clear Selection stays in the header.
-- The toolbar harvest basket shows the item count and the deduplicated total of everything selected. Clicking it opens the review sheet with exactly those items. Cleanups never overlap: Review actions are disabled while one runs.
+- The toolbar harvest basket shows the item count and the deduplicated total of everything selected. Clicking it opens the review sheet with exactly those items. Cleanups never overlap: Review actions, and every Start Scan control, are disabled while one runs ("A cleanup is already running"). A selection the app makes itself (scan-completion preselection) flies no chip.
 
 ### Destructive Actions
 

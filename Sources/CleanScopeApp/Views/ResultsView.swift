@@ -219,7 +219,9 @@ struct ResultsView: View {
         systemImage: destination.systemImage,
         message: "Run a scan to see what’s in \(destination.title).",
         icon: destination.icon,
-        commandLabel: "Start Scan"
+        commandLabel: "Start Scan",
+        isActionDisabled: !model.canStartScan,
+        actionHelp: model.scanBlockedHelp
       ) {
         Task { await model.startScan() }
       }

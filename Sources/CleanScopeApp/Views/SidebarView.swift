@@ -64,6 +64,8 @@ struct SidebarView: View {
         .controlSize(.large)
         .buttonStyle(.borderedProminent)
         .tint(BrandTheme.accent)
+        .disabled(!model.canStartScan)
+        .help(model.scanBlockedHelp)
       }
 
       HStack(spacing: 6) {

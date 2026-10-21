@@ -75,7 +75,8 @@ struct MenuBarContentView: View {
               Task { await model.scanDrive(at: url.path) }
             }
             .controlSize(.small)
-            .disabled(model.isScanning)
+            .disabled(!model.canStartScan)
+            .help(model.scanBlockedHelp)
           }
         }
       }
@@ -95,7 +96,8 @@ struct MenuBarContentView: View {
           openMainWindow()
           Task { await model.startScan(mode: .limited) }
         }
-        .disabled(model.isScanning)
+        .disabled(!model.canStartScan)
+        .help(model.scanBlockedHelp)
         Button("Empty Trash…") { confirmsEmptyTrash = true }
           .disabled((status.trashBytes ?? 0) == 0)
         Button("Settings…") {

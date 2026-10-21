@@ -61,7 +61,8 @@ struct DashboardView: View {
       .frame(maxWidth: 900, alignment: .leading)
       .frame(maxWidth: .infinity)
       .background(alignment: .top) {
-        DiskWeatherBackground(usedFraction: model.weatherUsedFraction)      }
+        DiskWeatherBackground(usedFraction: model.weatherUsedFraction)
+      }
     }
     .navigationTitle("Dashboard")
     .task { await model.refreshSystemSpace() }
@@ -184,7 +185,9 @@ struct DashboardView: View {
         systemImage: "magnifyingglass",
         message: "Run a scan to find caches and generated files your apps can rebuild.",
         icon: .scan,
-        commandLabel: "Start Scan"
+        commandLabel: "Start Scan",
+        isActionDisabled: !model.canStartScan,
+        actionHelp: model.scanBlockedHelp
       ) {
         Task { await model.startScan() }
       }

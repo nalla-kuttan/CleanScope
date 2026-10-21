@@ -40,11 +40,13 @@ struct ContentView: View {
     }
   }
 
-  /// One chip flies into the basket for whatever was just selected; a deselection plays none.
+  /// One chip flies into the basket for whatever the user just selected; a deselection plays
+  /// none, and so does a selection the app made itself (scan-completion preselection).
   private func flyNewSelections(old: Set<String>, new: Set<String>) {
     let added = new.subtracting(old)
-    guard !added.isEmpty, let flights, flights.hasBasket else { return }
-    let items = model.streamedResults.filter { added.contains($0.id) }
+    guard !added.isEmpty, !model.selectionChangeIsAutomatic, let flights, flights.hasBasket
+    else { return }
+    let items = model.selectedResults().filter { added.contains($0.id) }
     flights.fly(newlySelected: items, allowsMotion: motion.allowsTransitions)
   }
 

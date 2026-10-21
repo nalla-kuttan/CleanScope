@@ -57,7 +57,7 @@ interfaces or omits automatic Swift Testing framework paths.
 
 ## UI States
 
-- Dashboard before any scan: "Let’s see where your space went.", real disk capacity, "—" for safe space, and a Start Scan empty state.
+- Dashboard before any scan: "Let’s see where your space went." with the first-run reassurance, real disk capacity ("X available of Y", no safe-space figure until a scan), and a Start Scan empty state.
 - Scanning: sidebar shows Cancel Scan plus a live count; the hero reads "Looking for room to grow…" with a progress bar, the scan theatre shows the path and four jars with the streamed counts, and the Storage Map outlines tiles the scan has not reached.
 - Completed dashboard: safe-to-reclaim figure (nested folders counted once), review-needed space on its own line, disk bar, permission state, and up to six outermost quick wins.
 - Permission-limited state: "Open Full Disk Access" button plus expandable steps.
