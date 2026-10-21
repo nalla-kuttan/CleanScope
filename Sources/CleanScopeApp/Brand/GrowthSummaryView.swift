@@ -18,10 +18,15 @@ struct GrowthSummaryView: View {
     if showsDetail || disk != nil {
       VStack(alignment: .leading, spacing: 10) {
         if showsDetail {
-          Text(detailLine)
-            .font(.callout)
-            .foregroundStyle(BrandTheme.textSecondary)
-            .fixedSize(horizontal: false, vertical: true)
+          VStack(alignment: .leading, spacing: 2) {
+            Text(detailLine)
+            if let review = StoragePresentation.reviewLine(count: reviewCount), !isScanning {
+              Text(review)
+            }
+          }
+          .font(.callout)
+          .foregroundStyle(BrandTheme.textSecondary)
+          .fixedSize(horizontal: false, vertical: true)
         }
 
         if let disk {
@@ -50,7 +55,7 @@ struct GrowthSummaryView: View {
     var parts = ["\(CountPhrase.make(safeCount, "safe item"))"]
     if reviewBytes > 0 {
       parts.append(
-        "\(ByteCount.string(reviewBytes)) more in \(CountPhrase.make(reviewCount, "item")) to review")
+        "\(ByteCount.string(reviewBytes)) more to review")
     }
     return parts.joined(separator: " · ")
   }

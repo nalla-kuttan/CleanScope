@@ -60,6 +60,8 @@ struct DashboardView: View {
       .padding(24)
       .frame(maxWidth: 900, alignment: .leading)
       .frame(maxWidth: .infinity)
+      .background(alignment: .top) {
+        DiskWeatherBackground(usedFraction: model.weatherUsedFraction)      }
     }
     .navigationTitle("Dashboard")
     .task { await model.refreshSystemSpace() }

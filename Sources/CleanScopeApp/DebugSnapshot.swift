@@ -8,6 +8,7 @@
   /// visits every destination, writes a PNG of the window for each, and quits. Add
   /// `--snapshot-empty` to start without the saved scan. Add `--snapshot-scan-progress <0…1>`
   /// to capture a simulated mid-scan state built from the saved scan. It never scans or cleans.
+  /// `--snapshot-disk-used <0…1>` makes the Dashboard's disk weather read the disk as that full.
   /// `--snapshot-scan-cancelled` makes that scan a cancelled one. `--snapshot-collapse` also
   /// collapses a few selected Storage Map tiles as if they were trashed, without touching files.
   /// `--map-fixture <N>` swaps in a synthetic N-item tree; `--map-benchmark` then times the map.
@@ -38,6 +39,16 @@
     static var simulatedScanProgress: Double? {
       let args = ProcessInfo.processInfo.arguments
       guard let index = args.firstIndex(of: "--snapshot-scan-progress"), index + 1 < args.count,
+        let value = Double(args[index + 1])
+      else { return nil }
+      return min(max(value, 0), 1)
+    }
+
+    /// The used share of the disk (0…1) requested by `--snapshot-disk-used`, if any: it only
+    /// changes what the Dashboard's weather reads, never the real disk reading.
+    static var simulatedDiskUsed: Double? {
+      let args = ProcessInfo.processInfo.arguments
+      guard let index = args.firstIndex(of: "--snapshot-disk-used"), index + 1 < args.count,
         let value = Double(args[index + 1])
       else { return nil }
       return min(max(value, 0), 1)

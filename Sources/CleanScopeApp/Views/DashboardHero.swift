@@ -59,13 +59,14 @@ struct DashboardHero: View {
           .foregroundStyle(BrandTheme.accentText)
           Text("recovered")
             .font(.callout)
-            .foregroundStyle(BrandTheme.textSecondary)
+            .foregroundStyle(BrandTheme.textPrimary)
         }
         .accessibilityElement(children: .combine)
       }
 
+      // Primary text: it sits on the weather gradient, whose ends are checked against it.
       Text(subheadline(for: state))
-        .foregroundStyle(BrandTheme.textSecondary)
+        .foregroundStyle(BrandTheme.textPrimary)
         .fixedSize(horizontal: false, vertical: true)
     }
 
@@ -96,15 +97,16 @@ struct DashboardHero: View {
       safeBytes: model.summary.safeToDeleteBytes)
   }
 
+  /// Scanning shows the live count; every other state shows the disk weather. The review-count
+  /// line lives in the summary card.
   private func subheadline(for state: HeroState) -> String {
     if state == .scanning {
       return "\(CountPhrase.make(model.summary.totalResults, "item")) found so far."
     }
-    guard model.hasScanned else {
-      return "CleanScope checks known cleanup locations. Nothing is removed until you review it."
-    }
-    if let line = StoragePresentation.reviewLine(count: model.reviewCount) { return line }
-    return StoragePresentation.reclaimCopy(bytes: model.summary.safeToDeleteBytes)
+    return StoragePresentation.weatherLine(
+      usedFraction: model.weatherUsedFraction,
+      availableBytes: model.weatherDisk?.availableBytes ?? 0,
+      safeBytes: model.summary.safeToDeleteBytes)
   }
 }
 

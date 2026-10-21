@@ -286,6 +286,24 @@ final class AppModel: ObservableObject {
     @Published var debugCollapseRequest: Set<String>?
   #endif
 
+  /// The disk the Dashboard's weather reads: the real one, except that a snapshot run with
+  /// `--snapshot-disk-used` pretends the disk is that full.
+  var weatherDisk: Disk? {
+    #if DEBUG
+      if let used = DebugSnapshot.simulatedDiskUsed {
+        let total = disk?.totalBytes ?? 500_000_000_000
+        return Disk(totalBytes: total, availableBytes: Int64(Double(total) * (1 - used)))
+      }
+    #endif
+    return disk
+  }
+
+  /// Used share of `weatherDisk`; an unknown disk reads as empty.
+  var weatherUsedFraction: Double {
+    DiskWeather.usedFraction(
+      totalBytes: weatherDisk?.totalBytes ?? 0, availableBytes: weatherDisk?.availableBytes ?? 0)
+  }
+
   /// Derived once per results change instead of on every view render.
   @Published private(set) var summary = ScanSummary()
   @Published private(set) var counts: [Destination: Int] = [:]

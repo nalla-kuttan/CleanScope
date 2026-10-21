@@ -57,6 +57,20 @@ public enum StoragePresentation {
     return "\(CountPhrase.make(count, "item")) \(count == 1 ? "deserves" : "deserve") a closer look."
   }
 
+  /// The Dashboard's calm disk-weather line. Only the tightest tier quotes figures, and it
+  /// promises quick wins only when there are some.
+  public static func weatherLine(usedFraction: Double, availableBytes: Int64, safeBytes: Int64)
+    -> String
+  {
+    if usedFraction < 0.70 { return "Plenty of room." }
+    if usedFraction < 0.88 { return "Getting cozy." }
+    var line = "Room is tight. \(ByteCount.string(availableBytes)) available."
+    if safeBytes > 0 {
+      line += " Quick wins can free \(ByteCount.string(safeBytes)) without touching your files."
+    }
+    return line
+  }
+
   public static func reclaimCopy(bytes: Int64) -> String {
     switch bytes {
     case ..<1:
