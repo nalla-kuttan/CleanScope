@@ -32,14 +32,20 @@ cp -R "$RESOURCE_BUNDLE" "$APP_RESOURCES/"
 
 # SwiftPM's command-line build does not compile Metal, so build the Sprout Lens shader into the
 # staged resource bundle (SwiftPM bundles are flat: resources sit at the bundle root). Without
-# the Metal toolchain the app draws the lens without refraction, so this step is optional.
+# the Metal toolchain the app draws the lens without refraction, so this step is optional and
+# never fatal. `xcrun -f metal` finds the stub driver on Xcode 26 even when the Metal Toolchain
+# component is not installed, so the probe runs the compiler itself.
 LENS_SOURCE="$ROOT_DIR/Sources/CleanScopeApp/Resources/Lens.metal"
 LENS_BUNDLE="$APP_RESOURCES/CleanScope_CleanScopeApp.bundle"
-if xcrun -sdk macosx -f metal >/dev/null 2>&1 && xcrun -sdk macosx -f metallib >/dev/null 2>&1; then
+if xcrun -sdk macosx metal --version >/dev/null 2>&1; then
   LENS_BUILD="$ROOT_DIR/.build/lens-metal"
   mkdir -p "$LENS_BUILD"
-  xcrun -sdk macosx metal -c "$LENS_SOURCE" -o "$LENS_BUILD/Lens.air"
-  xcrun -sdk macosx metallib "$LENS_BUILD/Lens.air" -o "$LENS_BUNDLE/default.metallib"
+  if ! xcrun -sdk macosx metal -c "$LENS_SOURCE" -mmacosx-version-min="$MIN_SYSTEM_VERSION" \
+    -o "$LENS_BUILD/Lens.air"; then
+    echo "note: the lens shader did not compile; the app uses the SwiftUI glass fallback." >&2
+  elif ! xcrun -sdk macosx metallib "$LENS_BUILD/Lens.air" -o "$LENS_BUNDLE/default.metallib"; then
+    echo "note: the lens shader library was not built; the app uses the SwiftUI glass fallback." >&2
+  fi
 else
   echo "note: Metal toolchain not found; the lens shader is skipped (SwiftUI glass fallback)." >&2
 fi
