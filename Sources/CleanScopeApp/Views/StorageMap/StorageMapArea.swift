@@ -185,7 +185,8 @@ struct StorageMapArea: View {
         let selected = selectedBytes(under: tile.node)
         if selected > 0 { Text("Selected \(ByteCount.string(selected))") }
       } else {
-        Text("Hover over a tile for details. Right-click to select it for cleanup.")
+        Text("Click a safe tile to select it. Double-click a folder to open it.")
+          .lineLimit(1)
       }
       Spacer()
     }

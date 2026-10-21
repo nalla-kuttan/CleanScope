@@ -2,7 +2,8 @@ import AppKit
 import CleanScopeCore
 import SwiftUI
 
-/// Treemap of the latest scan. Click a folder to drill in; the breadcrumb or ⌘[ goes back up.
+/// Treemap of the latest scan. Click a safe tile to select it; double-click a folder (or click
+/// one that can't be selected) to drill in; the breadcrumb or ⌘[ goes back up.
 struct StorageMapView: View {
   @EnvironmentObject private var model: AppModel
   @State private var trail: [String] = []
@@ -163,7 +164,7 @@ struct StorageMapView: View {
         Text("Storage Map")
           .font(.system(size: 26, weight: .bold, design: .rounded))
           .foregroundStyle(BrandTheme.textPrimary)
-        Text("Larger tiles use more space. Click a folder to look inside.")
+        Text("Larger tiles use more space. Double-click a folder to look inside.")
           .font(.system(.subheadline, design: .rounded))
           .foregroundStyle(BrandTheme.textSecondary)
       }

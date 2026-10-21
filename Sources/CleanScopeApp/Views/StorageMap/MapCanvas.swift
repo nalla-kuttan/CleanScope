@@ -2,8 +2,10 @@ import CleanScopeCore
 import SwiftUI
 
 /// The storage map drawn in one `Canvas`. Selected tiles lift with a shadow and a check badge.
-/// Pointer: hover highlights, click focuses and drills. Keyboard: arrows move focus in reading
-/// order, Space toggles selection, Return drills in. VoiceOver sees one button per tile.
+/// Pointer: hover highlights; a click focuses the tile and toggles its selection (a tile that
+/// can't be selected opens instead); a double-click opens a folder. Keyboard: arrows move focus
+/// in reading order, Space toggles selection, Return drills in. VoiceOver sees one button per
+/// tile.
 /// The Sprout Lens magnifies the tile under the pointer, else the focused tile, else it rests on
 /// the largest selectable tile.
 ///
@@ -43,9 +45,7 @@ struct MapCanvas: View {
           tiles: tiles, selection: selection, colors: colors,
           revealX: revealX(in: proxy.size.width), collapsing: collapsing,
           collapseProgress: collapseProgress,
-          onActivate: { tile in
-            if tile.isSelectable { onToggle(tile.id) } else { onDrill(tile.id) }
-          },
+          onActivate: activate,
           onOpen: { onDrill($0.id) }
         )
         .equatable()
@@ -71,13 +71,19 @@ struct MapCanvas: View {
         setHovered(nil)
       }
     }
+    // A double-click opens a folder; a single click toggles a selectable tile and opens a
+    // folder that can't be selected. The exclusive pair waits out the double-click interval
+    // before a single click lands, a short delay accepted so one click never does both.
     .gesture(
-      SpatialTapGesture().onEnded { value in
-        guard let tile = tile(at: value.location) else { return }
-        focusedID = tile.id
-        isFocused = true
-        onDrill(tile.id)
+      SpatialTapGesture(count: 2).onEnded { value in
+        guard let tile = focusTile(at: value.location) else { return }
+        if tile.isDrillable { onDrill(tile.id) } else { activate(tile) }
       }
+      .exclusively(
+        before: SpatialTapGesture(count: 1).onEnded { value in
+          guard let tile = focusTile(at: value.location) else { return }
+          activate(tile)
+        })
     )
     .focusable()
     .focused($isFocused)
@@ -141,6 +147,19 @@ struct MapCanvas: View {
           .stroke(colors.color(BrandPalette.accentText), lineWidth: 2.5)
       }
     }
+  }
+
+  /// A click or VoiceOver's default action: toggles a selectable tile, else opens it.
+  private func activate(_ tile: MapTile) {
+    if tile.isSelectable { onToggle(tile.id) } else { onDrill(tile.id) }
+  }
+
+  /// The tile under a click, which also takes keyboard focus.
+  private func focusTile(at point: CGPoint) -> MapTile? {
+    guard let tile = tile(at: point) else { return nil }
+    focusedID = tile.id
+    isFocused = true
+    return tile
   }
 
   private func setHovered(_ id: String?) {
