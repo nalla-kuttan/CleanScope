@@ -207,6 +207,18 @@ import Testing
     #expect(plan.remainingSelection == [missing.id])
   }
 
+  @Test func cleanedCopyFollowsHowItemsLeft() {
+    #expect(StoragePresentation.cleanedHeadline(method: .trash) == "Moved safely to Trash.")
+    #expect(StoragePresentation.cleanedHeadline(method: .permanent) == "Deleted permanently.")
+    #expect(!StoragePresentation.cleanedHeadline(method: .permanent).contains("Trash"))
+    #expect(StoragePresentation.quickWinsSubtitle(deleteImmediately: false).contains("Trash"))
+    #expect(!StoragePresentation.quickWinsSubtitle(deleteImmediately: true).contains("Trash"))
+    #expect(
+      StoragePresentation.quickWinsSubtitle(deleteImmediately: true).contains("permanently"))
+    #expect(StoragePresentation.nothingRemovableNote(deleteImmediately: false).contains("Trash"))
+    #expect(!StoragePresentation.nothingRemovableNote(deleteImmediately: true).contains("Trash"))
+  }
+
   private func resultFixture(
     path: String,
     category: SafetyCategory = .safeToDelete,

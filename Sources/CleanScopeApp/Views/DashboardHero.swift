@@ -91,7 +91,9 @@ struct DashboardHero: View {
   private static let settlePhases: [SettlePhase] = [.settled, .entering]
 
   private func headline(for state: HeroState) -> String {
-    if state == .cleaned { return "Moved safely to Trash." }
+    if state == .cleaned {
+      return StoragePresentation.cleanedHeadline(method: model.lastCleanupMethod)
+    }
     return StoragePresentation.headline(
       hasScanned: model.hasScanned, isScanning: model.isScanning,
       safeBytes: model.summary.safeToDeleteBytes)

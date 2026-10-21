@@ -230,6 +230,9 @@ final class AppModel: ObservableObject {
   }
   @Published var selection: Set<String> = []
   @Published var cleanupSession: CleanupSession?
+  /// How `cleanupSession`'s items left: the Trash, or permanent deletion. Recorded when the
+  /// cleanup runs, so copy follows what happened rather than the current setting.
+  @Published private(set) var lastCleanupMethod: DeletionMethod = .trash
   @Published var isScanning = false
   /// True for the duration of `cleanup(_:)`; the harvest basket stays disabled meanwhile, so a
   /// second review can't start a cleanup that collides with this one.
@@ -825,6 +828,7 @@ final class AppModel: ObservableObject {
       debugMarkTrashed(Set(items.map(\.id)))
       terrariumBeforeCleanup = before
       cleanupSession = session
+      lastCleanupMethod = .trash
       cleanedSinceScan = true
       pendingRollSessionID = session.id
     }
@@ -917,8 +921,10 @@ final class AppModel: ObservableObject {
       reviewed: items, current: streamedResults, selection: selection)
     guard !plan.items.isEmpty else { return }
     let terrariumBefore = TerrariumState(layers: terrariumLayers, growthStage: terrariumGrowthStage)
-    cleanupSession = await deletionService.cleanup(
-      selected: plan.items, method: method ?? cleanupMethod)
+    // DeletionService treats anything but `.permanent` as the Trash; record the same.
+    let usedMethod: DeletionMethod = (method ?? cleanupMethod) == .permanent ? .permanent : .trash
+    cleanupSession = await deletionService.cleanup(selected: plan.items, method: usedMethod)
+    lastCleanupMethod = usedMethod
     let removedAny = !(cleanupSession?.deletedItems.isEmpty ?? true)
     terrariumBeforeCleanup = removedAny ? terrariumBefore : nil
     if let session = cleanupSession, !session.deletedItems.isEmpty {

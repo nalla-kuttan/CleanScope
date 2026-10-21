@@ -76,7 +76,8 @@ struct ResultsView: View {
         state: checkboxState(state),
         isEnabled: !ResultSelection.eligible(rows).isEmpty,
         accessibilityLabel: state == .all ? "Deselect all visible" : "Select all visible",
-        unavailableReason: "Nothing here can be moved to Trash from CleanScope."
+        unavailableReason: StoragePresentation.nothingRemovableNote(
+          deleteImmediately: model.settings.deleteImmediately)
       ) { _ in model.setSelection(state != .all, for: rows) }
       .flightSource(FlightCenter.headerKey)
 

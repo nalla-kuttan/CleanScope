@@ -16,7 +16,10 @@ struct CleanupCelebrationView: View {
         .opacity(isVisible ? 1 : 0)
 
       VStack(alignment: .leading, spacing: 4) {
-        Text(movedCount > 0 ? "Moved safely to Trash" : "Nothing was moved")
+        Text(
+          movedCount > 0
+            ? StoragePresentation.cleanedHeadline(method: model.lastCleanupMethod)
+            : "Nothing was moved")
           .font(.title3.weight(.semibold))
           .foregroundStyle(BrandTheme.textPrimary)
         if movedCount > 0 {

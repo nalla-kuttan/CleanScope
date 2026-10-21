@@ -88,6 +88,26 @@ public enum StoragePresentation {
     return line
   }
 
+  /// What the cleaned hero and the Last Cleanup report say, from how the items actually left:
+  /// the Trash, or permanent deletion when "Delete immediately" was on.
+  public static func cleanedHeadline(method: DeletionMethod) -> String {
+    method == .permanent ? "Deleted permanently." : "Moved safely to Trash."
+  }
+
+  /// The Quick wins subtitle, matching what confirming the review will do.
+  public static func quickWinsSubtitle(deleteImmediately: Bool) -> String {
+    deleteImmediately
+      ? "The largest high-confidence caches. Each is deleted permanently once you confirm."
+      : "The largest high-confidence caches. Each can move safely to Trash."
+  }
+
+  /// Why a list's select-all box is disabled.
+  public static func nothingRemovableNote(deleteImmediately: Bool) -> String {
+    deleteImmediately
+      ? "Nothing here can be deleted from CleanScope."
+      : "Nothing here can be moved to Trash from CleanScope."
+  }
+
   public static func reclaimCopy(bytes: Int64) -> String {
     switch bytes {
     case ..<1:

@@ -120,7 +120,9 @@ struct DashboardView: View {
             .font(.title3.weight(.semibold))
             .foregroundStyle(BrandTheme.textPrimary)
             .accessibilityAddTraits(.isHeader)
-          Text("The largest high-confidence caches. Each can move safely to Trash.")
+          Text(
+            StoragePresentation.quickWinsSubtitle(
+              deleteImmediately: model.settings.deleteImmediately))
             .font(.callout)
             .foregroundStyle(BrandTheme.textSecondary)
         }
