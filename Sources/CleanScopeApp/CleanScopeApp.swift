@@ -5,6 +5,7 @@ import SwiftUI
 struct CleanScopeApp: App {
   @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
   @StateObject private var model = CleanScopeApp.makeModel()
+  @State private var flights = FlightCenter()
   private let previewColorScheme: ColorScheme? =
     ProcessInfo.processInfo.arguments.contains("--dark-preview") ? .dark : nil
 
@@ -29,6 +30,7 @@ struct CleanScopeApp: App {
         .environmentObject(model)
         .environmentObject(model.statusMonitor)
         .environmentObject(model.motion)
+        .environment(\.flightCenter, flights)
         .tint(BrandTheme.accent)
         .preferredColorScheme(previewColorScheme)
         .frame(minWidth: 820, minHeight: 560)

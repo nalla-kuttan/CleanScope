@@ -63,18 +63,7 @@ struct StorageMapView: View {
     .padding(24)
     .background(BrandTheme.surface)
     .onChange(of: model.session?.id) { trail = [] }
-    .toolbar {
-      ToolbarItem(placement: .primaryAction) {
-        let selected = model.selectedResults()
-        Button {
-          review = ReviewRequest(items: selected)
-        } label: {
-          Label("Review Cleanup…", systemImage: "checklist")
-        }
-        .disabled(selected.isEmpty || model.isScanning)
-        .help(reviewHelp(selected))
-      }
-    }
+    .harvestBasketToolbar { review = ReviewRequest(items: $0) }
     .sheet(item: $review) { request in
       CleanupReviewSheet(items: request.items) { reviewed in
         Task { await cleanUp(reviewed) }
@@ -87,15 +76,6 @@ struct StorageMapView: View {
         Task { await debugCollapse(request) }
       }
     #endif
-  }
-
-  private func reviewHelp(_ selected: [ScanResult]) -> String {
-    if model.isScanning { return "Review cleanup once the scan finishes" }
-    if selected.isEmpty { return "Select items to review them for cleanup" }
-    let count = CountPhrase.make(selected.count, "selected item")
-    return model.settings.deleteImmediately
-      ? "Review \(count) before deleting them permanently"
-      : "Review \(count) before moving them to Trash"
   }
 
   // MARK: - Scan sweep and collapse
@@ -300,6 +280,7 @@ struct StorageMapView: View {
             isEnabled: result.canDelete && !result.isExcluded,
             accessibilityLabel: "Select \(tile.node.name)"
           ) { _ in model.toggleSelection(result) }
+          .flightSource(result.id)
         } else {
           Color.clear.frame(width: 20, height: 20)
         }

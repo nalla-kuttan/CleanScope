@@ -235,4 +235,32 @@ private actor TrashedPaths {
     #expect(plan.items == [parent])
     #expect(plan.remainingSelection == [other.id])
   }
+
+  @Test func singleSelectionPlaysOneFlight() {
+    let item = ScanResult.fixture(path: "/u/Library/Caches/Brave", sizeBytes: 100, category: .safeToDelete)
+
+    #expect(BasketPresentation.flights(newlySelected: [item]) == [item])
+  }
+
+  @Test func bulkSelectionPlaysOneFlight() {
+    let items = (0..<2_709).map {
+      ScanResult.fixture(path: "/u/Library/Caches/Item\($0)", sizeBytes: 1, category: .safeToDelete)
+    }
+
+    let flights = BasketPresentation.flights(newlySelected: items)
+
+    #expect(flights.count == 1)
+    #expect(flights.first == items.first)
+  }
+
+  @Test func deselectionPlaysNoFlight() {
+    #expect(BasketPresentation.flights(newlySelected: []).isEmpty)
+  }
+
+  @Test func chipLabelNamesTheItemAndCountsTheRest() {
+    let item = ScanResult.fixture(path: "/u/Library/Caches/Brave", sizeBytes: 100, category: .safeToDelete)
+
+    #expect(BasketPresentation.chipLabel(for: item, totalNewlySelected: 1) == "Brave")
+    #expect(BasketPresentation.chipLabel(for: item, totalNewlySelected: 2_709) == "Brave +2,708")
+  }
 }

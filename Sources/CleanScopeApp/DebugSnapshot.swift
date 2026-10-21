@@ -13,6 +13,9 @@
   /// `--map-fixture <N>` swaps in a synthetic N-item tree; `--map-benchmark` then times the map.
   /// `--snapshot-cleanup` seeds an in-memory cleanup of the largest quick wins before Last
   /// Cleanup (no files are touched) and also captures its terrarium mid-compost.
+  /// `--snapshot-select one|all` selects the largest eligible item, or every eligible item, before
+  /// the tour so the toolbar basket shows a selection (nothing is cleaned). `--snapshot-flight`
+  /// also selects one Ready to Delete item and captures the basket flight mid-air.
   @MainActor
   enum DebugSnapshot {
     static var directory: URL? {
@@ -45,6 +48,19 @@
 
     static var simulatesCollapse: Bool {
       ProcessInfo.processInfo.arguments.contains("--snapshot-collapse")
+    }
+
+    /// `--snapshot-select`'s value: "one" or "all".
+    static var preselection: String? {
+      let args = ProcessInfo.processInfo.arguments
+      guard let index = args.firstIndex(of: "--snapshot-select"), index + 1 < args.count else {
+        return nil
+      }
+      return args[index + 1]
+    }
+
+    static var capturesFlight: Bool {
+      ProcessInfo.processInfo.arguments.contains("--snapshot-flight")
     }
 
     static var seedsCleanup: Bool {
@@ -109,6 +125,22 @@
       }
       NSApp.windows.first(where: \.isVisible)?.setContentSize(NSSize(width: 1180, height: 760))
 
+      let eligible = ResultSelection.eligible(model.streamedResults)
+      switch preselection {
+      case "one":
+        if let largest = eligible.max(by: { $0.sizeBytes < $1.sizeBytes }) {
+          model.setSelection(true, for: largest)
+        }
+      case "all":
+        model.setSelection(true, for: eligible)
+      default:
+        break
+      }
+      let reviewed = model.selectedResults()
+      print(
+        "basket-check: \(reviewed.count) selected, review sheet total "
+          + ByteCount.string(SelectionSummary(items: reviewed).totalBytes))
+
       if let seconds = terrariumCPUCheckSeconds {
         await runTerrariumCPUCheck(seconds: seconds)
         NSApp.terminate(nil)
@@ -149,6 +181,19 @@
         capture(directory.appendingPathComponent("\(prefix)collapse-mid-\(appearance).png"))
         try? await Task.sleep(nanoseconds: 1_200_000_000)
         capture(directory.appendingPathComponent("\(prefix)collapse-after-\(appearance).png"))
+      }
+
+      if capturesFlight, let item = ResultSelection.eligible(model.results(for: .readyToDelete)).max(by: { $0.sizeBytes < $1.sizeBytes }) {
+        model.clearSelection()
+        model.destination = .readyToDelete
+        try? await Task.sleep(nanoseconds: 900_000_000)
+        model.setSelection(true, for: item)
+        try? await Task.sleep(nanoseconds: 150_000_000)
+        capture(directory.appendingPathComponent("\(prefix)flight-early-\(appearance).png"))
+        try? await Task.sleep(nanoseconds: 150_000_000)
+        capture(directory.appendingPathComponent("\(prefix)flight-mid-\(appearance).png"))
+        try? await Task.sleep(nanoseconds: 700_000_000)
+        capture(directory.appendingPathComponent("\(prefix)flight-after-\(appearance).png"))
       }
 
       if !startsEmpty, let item = model.results(for: .readyToDelete).first {

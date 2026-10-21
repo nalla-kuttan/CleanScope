@@ -5,6 +5,7 @@ import SwiftUI
 struct ContentView: View {
   @EnvironmentObject private var model: AppModel
   @EnvironmentObject private var motion: MotionPolicy
+  @Environment(\.flightCenter) private var flights
 
   var body: some View {
     NavigationSplitView {
@@ -24,6 +25,7 @@ struct ContentView: View {
         .animation(motion.animation(), value: model.exclusionUndo?.id)
     }
     .background(WindowAccessor { motion.attach(to: $0) })
+    .onChange(of: model.selection) { old, new in flyNewSelections(old: old, new: new) }
     #if DEBUG
       .task { await DebugSnapshot.run(model: model) }
     #endif
@@ -36,6 +38,14 @@ struct ContentView: View {
     } message: { alert in
       Text(alert.message)
     }
+  }
+
+  /// One chip flies into the basket for whatever was just selected; a deselection plays none.
+  private func flyNewSelections(old: Set<String>, new: Set<String>) {
+    let added = new.subtracting(old)
+    guard !added.isEmpty, let flights, flights.hasBasket else { return }
+    let items = model.streamedResults.filter { added.contains($0.id) }
+    flights.fly(newlySelected: items, allowsMotion: motion.allowsTransitions)
   }
 
   @ViewBuilder

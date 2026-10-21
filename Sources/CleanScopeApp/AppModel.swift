@@ -224,6 +224,9 @@ final class AppModel: ObservableObject {
   @Published var selection: Set<String> = []
   @Published var cleanupSession: CleanupSession?
   @Published var isScanning = false
+  /// True for the duration of `cleanup(_:)`; the harvest basket stays disabled meanwhile, so a
+  /// second review can't start a cleanup that collides with this one.
+  @Published private(set) var isCleaningUp = false
   /// Fraction of top-level scan items finished: 0 at scan start, 1 once a scan completes. A
   /// cancelled scan leaves it where it stopped.
   @Published private(set) var scanProgress: Double = 0
@@ -839,6 +842,9 @@ final class AppModel: ObservableObject {
   func cleanup(
     _ items: [ScanResult], method: DeletionMethod? = nil, navigatesToReport: Bool = true
   ) async {
+    guard !isCleaningUp else { return }
+    isCleaningUp = true
+    defer { isCleaningUp = false }
     let plan = ResultSelection.cleanupPlan(
       reviewed: items, current: streamedResults, selection: selection)
     guard !plan.items.isEmpty else { return }

@@ -71,6 +71,9 @@ struct StorageMapArea: View {
   var collapseProgress: Double = 0
 
   @State private var hoveredID: String?
+  /// The canvas's frame in the window's global space, to place a tile's flight into the basket.
+  @State private var canvasFrame = CGRect.zero
+  @Environment(\.flightCenter) private var flightCenter
 
   /// The tile the details bar and context menu describe: the hovered one, else the focused one.
   private var target: StorageMapView.Tile? {
@@ -95,6 +98,7 @@ struct StorageMapArea: View {
         .help(target.map(tooltip) ?? "")
       }
       .frame(minHeight: 360)
+      .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { canvasFrame = $0 }
       .accessibilityElement(children: .contain)
       .accessibilityLabel("Storage map")
       hoverBar
@@ -107,7 +111,15 @@ struct StorageMapArea: View {
 
   private func toggle(_ id: String) {
     guard let tile = cache.tile(id), tile.isSelectable, let result = tile.result else { return }
+    noteFlightSource(tileID: id, resultID: result.id)
     model.toggleSelection(result)
+  }
+
+  /// Registers the tile's rect as where a selection's flight into the basket starts.
+  private func noteFlightSource(tileID: String, resultID: String) {
+    guard let rect = cache.mapTiles(in: canvasFrame.size).first(where: { $0.id == tileID })?.rect
+    else { return }
+    flightCenter?.register(resultID, frame: rect.offsetBy(dx: canvasFrame.minX, dy: canvasFrame.minY))
   }
 
   private func drill(_ id: String) {
@@ -124,6 +136,7 @@ struct StorageMapArea: View {
     if let result = tile.result, result.canDelete, !result.isExcluded {
       let selected = model.selection.contains(result.id)
       Button(selected ? "Deselect for Cleanup" : "Select for Cleanup") {
+        noteFlightSource(tileID: tile.id, resultID: result.id)
         model.setSelection(!selected, for: result)
       }
     }
