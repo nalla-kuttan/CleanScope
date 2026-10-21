@@ -282,6 +282,8 @@ final class AppModel: ObservableObject {
   #if DEBUG
     /// Lets `DebugSnapshot` open an item's detail sheet.
     @Published var debugDetail: ScanResult?
+    /// Lets `DebugSnapshot` present `CleanupReviewSheet` with sample items. It is never confirmed.
+    @Published var debugReview: [ScanResult]?
     /// Result ids `DebugSnapshot` asks the Storage Map to collapse, as if they were just trashed.
     @Published var debugCollapseRequest: Set<String>?
   #endif

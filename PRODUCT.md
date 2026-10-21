@@ -20,9 +20,11 @@ Playful, reassuring, and capable.
 
 CleanScope should make storage maintenance feel lighter and more satisfying without making deletion feel casual. Its energy comes from clear progress, friendly language, fresh color, and restrained moments of delight.
 
+The interface is alive, and the living part is the user's own storage. Real numbers drive motion: tile areas, soil layers, jar counts and the recovered figure come from scan data, and nothing animates toward an invented value. Delight follows confirmed actions: the terrarium composts, the number rolls and the sprout grows only after the user has reviewed and confirmed a cleanup. Review and confirmation screens stay still, and every animation has a Reduce Motion equivalent that carries the same information.
+
 ## Anti-references
 
-- Aggressive one-click cleaner apps that use alarms, gauges, dials, or fear. Alerts are allowed when they are calm, state the fact and the next step, and can be snoozed.
+- Aggressive one-click cleaner apps that use alarms, dials, or fear. Alerts are allowed when they are calm, state the fact and the next step, and can be snoozed.
 - Health scores without reasons. Any score shows its breakdown as a number and a list, never a dial.
 - Protection copy that promises complete safety or names threats to frighten.
 - Casino-like gamification, streak pressure, points, levels, or confetti.

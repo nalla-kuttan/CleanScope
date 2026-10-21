@@ -59,6 +59,7 @@ struct ResultsView: View {
     }
     #if DEBUG
       .onReceive(model.$debugDetail) { if let item = $0 { detail = item } else { detail = nil } }
+      .onReceive(model.$debugReview) { review = $0.map { ReviewRequest(items: $0) } }
     #endif
     .onChange(of: rows.map(\.id)) { _, ids in
       if let rangeAnchorID, !ids.contains(rangeAnchorID) { self.rangeAnchorID = nil }

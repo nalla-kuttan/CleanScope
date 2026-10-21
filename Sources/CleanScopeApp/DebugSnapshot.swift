@@ -18,6 +18,8 @@
   /// `--snapshot-select one|all` selects the largest eligible item, or every eligible item, before
   /// the tour so the toolbar basket shows a selection (nothing is cleaned). `--snapshot-flight`
   /// also selects one Ready to Delete item and captures the basket flight mid-air.
+  /// A run with a saved scan also writes `review-<appearance>.png`, `CleanupReviewSheet` listing
+  /// five sample items (never confirmed); it must be identical with and without `--reduce-motion`.
   @MainActor
   enum DebugSnapshot {
     static var directory: URL? {
@@ -286,6 +288,16 @@
         try? await Task.sleep(nanoseconds: 1_200_000_000)
         capture(directory.appendingPathComponent("detail-\(appearance).png"), sheet: true)
         model.debugDetail = nil
+        // The cleanup review sheet with a few sample items. It is only shown, never confirmed.
+        // Run with and without `--reduce-motion` and `cmp` the two PNGs: they must be identical.
+        let sample = Array(ResultSelection.eligible(model.results(for: .readyToDelete)).prefix(5))
+        if !sample.isEmpty {
+          model.debugReview = sample
+          try? await Task.sleep(nanoseconds: 1_200_000_000)
+          capture(directory.appendingPathComponent("review-\(appearance).png"), sheet: true)
+          model.debugReview = nil
+          try? await Task.sleep(nanoseconds: 500_000_000)
+        }
       }
 
       NSApp.windows.first(where: \.isVisible)?.setContentSize(NSSize(width: 820, height: 560))

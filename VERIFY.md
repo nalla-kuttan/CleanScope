@@ -8,10 +8,21 @@
 
 - Visual check (debug builds only, needs no Screen Recording permission):
   `dist/CleanScope.app/Contents/MacOS/CleanScopeApp --snapshot-dir <dir>` writes a PNG of
-  every destination, an item detail sheet and the 820 × 560 minimum window, then quits.
-  Add `--dark-preview` for dark mode and `--snapshot-empty` for the never-scanned state.
-  It never scans or moves anything to Trash. The sidebar's material can't be drawn
-  in-process, so its rows appear blank in these captures.
+  every destination, an item detail sheet, `CleanupReviewSheet` (`review-<appearance>.png`,
+  five sample items, never confirmed), the menu bar sprout stages and the 820 × 560 minimum
+  window, then quits. `--snapshot-dir` must be the first flag. A run that opens no window and writes nothing was launched with `--dark-preview` or `--reduce-motion` before a value flag such as `--snapshot-disk-used`; put those two last. Every other flag below is
+  debug-only and none of them scans, cleans or touches a file:
+  - `--dark-preview`: dark appearance. `--snapshot-empty`: the never-scanned state (files get an `empty-` prefix).
+  - `--reduce-motion`: forces Reduce Motion on in `MotionPolicy`.
+  - `--snapshot-scan-progress <0…1>`: a simulated mid-scan Dashboard and Storage Map built from the saved scan (add `--snapshot-scan-cancelled` for a cancelled one). Use a separate directory.
+  - `--snapshot-disk-used <0…1>`: the Dashboard's disk weather reads the disk as that full (try 0.5, 0.8 and 0.93 for the three weather lines).
+  - `--snapshot-select one|all`: selects the largest eligible item, or every eligible item, so the toolbar basket shows a selection.
+  - `--snapshot-flight`: selects one Ready to Delete item and captures the basket flight (`flight-early/mid/after`).
+  - `--snapshot-cleanup`: seeds an in-memory cleanup and captures `lastCleanup-mid` (terrarium mid-compost), `lastCleanup` and `dashboard-cleaned`.
+  - `--map-fixture <N>`: replaces the session with a synthetic N-item Storage Map. `--snapshot-collapse` (with a fixture and `--snapshot-select all`) captures `collapse-mid` and `collapse-after`.
+  - `--map-benchmark`: with `--map-fixture`, times the map (see Performance checks) and quits.
+  - `--terrarium-cpu-check <seconds>`: idles on the Dashboard shown, then minimised, and prints this process's CPU use for both.
+  The sidebar's material can't be drawn in-process, so its rows appear blank in these captures.
 
 `script/swiftpm.sh` delegates to SwiftPM directly and works around incomplete
 Command Line Tools installations where Apple ships stale private manifest
@@ -47,7 +58,7 @@ interfaces or omits automatic Swift Testing framework paths.
 ## UI States
 
 - Dashboard before any scan: "Let’s see where your space went.", real disk capacity, "—" for safe space, and a Start Scan empty state.
-- Scanning: sidebar shows Cancel Scan plus a live count; the Sprout Lens grows through three stages.
+- Scanning: sidebar shows Cancel Scan plus a live count; the hero reads "Looking for room to grow…" with a progress bar, the scan theatre shows the path and four jars with the streamed counts, and the Storage Map outlines tiles the scan has not reached.
 - Completed dashboard: safe-to-reclaim figure (nested folders counted once), review-needed space on its own line, disk bar, permission state, and up to six outermost quick wins.
 - Permission-limited state: "Open Full Disk Access" button plus expandable steps.
 - Results: native Table with sortable columns, search in the toolbar, checkbox column with shift-range selection, disabled checkboxes explain themselves on hover.
@@ -59,10 +70,45 @@ interfaces or omits automatic Swift Testing framework paths.
 
 - Every text token is at least 4.5:1 on both surfaces in light, dark and increased-contrast appearances (lowest 4.74:1); white on accent at least 4.6:1.
 - Safety category is always icon plus text label, never color alone.
-- Reduce Motion removes every animation; there is no hover scaling.
+- Reduce Motion removes every animation (see Living Interface Checks); there is no hover scaling.
 - Sidebar and results support arrow keys, Return, ⌘A and VoiceOver selection state through native List and Table.
 - Icon-only buttons carry accessibility labels and help text.
 - Decorative Sprout Lens marks are hidden from VoiceOver.
+
+## Living Interface Checks
+
+New snapshot states (each in light, dark and with `--reduce-motion`):
+
+- Dashboard idle, scanning (`--snapshot-scan-progress 0.5`), results, tight disk (`--snapshot-disk-used 0.93`: "Room is tight. X available." in the hero) and cleaned (`--snapshot-cleanup`).
+- Dashboard terrarium shows five soil layers; Last Cleanup shows the terrarium after the compost; the menu bar popover thumbnail comes from the same scene.
+- Storage Map with a fixture: tiles in the safety fills, the free-space tile only on a whole-Mac scan, the lens resting on the largest selectable tile, selected tiles lifted with a check badge, and `collapse-mid` / `collapse-after`.
+- Module icons at 64 pt (headers, empty states), 40 pt (results header) and 32 pt (Dashboard Modules row, menu popover); none in the sidebar, tables or dialogs.
+- Toolbar basket: "Nothing selected" disabled, then item count and total; "N selected in other sections" in the results header; flight frames.
+- Menu bar sprout stages 0, 1 and 2 on light and dark bars, plus the size label.
+- `CleanupReviewSheet` is pixel-identical with and without `--reduce-motion` (`cmp review-light.png` between the two runs prints nothing).
+- A live Dashboard with `--reduce-motion`: the terrarium is a still frame, the hero crossfades, no sweep band, no theatre dots, no flight, the recovered number appears without rolling.
+- Trashed items disappear from every list and total after a confirmed cleanup, while Last Cleanup still lists them.
+
+## Performance checks
+
+- Storage Map, 3,000 tiles: `CleanScopeApp --map-fixture 3000 --map-benchmark` renders the map and the lens offscreen 300 times at 1180 × 700 (2×) and prints the mean and p95. **Pass: mean at or under 16.7 ms.** It prints `shader off (SwiftUI glass)` when the build has no compiled Metal library.
+- Terrarium CPU: `CleanScopeApp --snapshot-dir <dir> --terrarium-cpu-check 10` prints the process CPU use while the Dashboard is visible and while the window is minimised (the minimised figure should be near zero).
+
+## Pending manual verification
+
+These need a person at a Mac with Xcode (the Metal shader needs its toolchain). None of them has been done; do not tick an item that was not run.
+
+- [ ] **VoiceOver, Storage Map.** Turn VoiceOver on (⌘F5), open Storage Map with a scan loaded, and move into the map. Confirm each tile reads "Name, size, safety label, selected/not selected" (selectable tiles only for the last part), that Space toggles the focused tile, and that the Open action on a selectable folder drills in. Confirm the lens bubble is not read as a second element.
+- [ ] **VoiceOver, basket.** Select items. Confirm the toolbar basket reads the item count and total, activating it opens the review sheet, and "N selected in other sections" is read in the results header.
+- [ ] **VoiceOver, terrarium.** On the Dashboard, confirm the terrarium is one element reading "Storage terrarium: … safe to reclaim, … worth a closer look, … app data, … personal files, … macOS and apps."
+- [ ] **Keyboard only, Storage Map.** Without the mouse, Tab into the map, then arrow through every tile (top to bottom, then left to right), Space to select and deselect, Return to open a folder, ⌘[ to go up. Confirm focus is visible on every tile, including small ones under the lens, and that the toolbar basket is reachable by Tab.
+- [ ] **Instruments, Storage Map.** Time Profiler or the Animation Hitches template on a 3,000-tile map (`--map-fixture 3000`), moving the lens continuously for 10 s. Pass: at most 1% dropped frames.
+- [ ] **Instruments, terrarium.** Dashboard idle: under 10% of one CPU core. Cover or minimise the window and confirm GPU work stops (Metal System Trace).
+- [ ] **Terrarium pause when the real window is occluded.** Snapshot runs treat the window as visible, so this path is only exercised by hand: cover the window with another app's window, then check Activity Monitor (CPU, GPU) and confirm the terrarium stops redrawing; bring the window back and confirm it resumes without the lens jumping.
+- [ ] **Live menu bar.** Enable the menu bar extra in Settings. Confirm the sprout draws as a template image in light and dark menu bars and with a tinted wallpaper, the size label appears at 14 days and 500 MB (set the clock or the cleanup log to test), and the popover shows the terrarium thumbnail and "Review Quick Wins…".
+- [ ] **Menu bar label at midnight.** Leave the app running across midnight (or change the system date). Confirm the days-since-cleanup stage and label refresh without relaunching.
+- [ ] **Metal lens shader.** Build on a machine with Xcode so `build_and_run.sh` compiles `Lens.metal` into the resource bundle. Confirm the benchmark prints `shader on`, the lens refracts, its content lines up with the ring (compare `map-lens-check.png`), and the benchmark is still at or under 16.7 ms. Also confirm that without the library the map still works.
+- [ ] **Permanent-delete alert, Return key.** Turn on Delete immediately in Settings, start a permanent delete and confirm the second alert. Press Return: it must activate Cancel, never the delete button. Escape must also cancel.
 
 ## 2026-06-24 — Bulk selection and ready cache
 
@@ -118,3 +164,14 @@ interfaces or omits automatic Swift Testing framework paths.
 - `./script/swiftpm.sh test`: passed with 196 tests in 33 suites, including the audit's `cleanupPlan*`, `outermost*` and exclusion tests and every gap-features suite.
 - Every destructive path, including single-item actions and "Delete immediately", goes through the cleanup review sheet, which hands back exactly the items it showed.
 - Not yet verified live: snapshot pass of the gap-features destinations in the audit layout.
+
+## 2026-10-21 — Living interface
+
+- `./script/swiftpm.sh test`: passed with 263 tests in 42 suites.
+- `./script/swiftpm.sh build`: passed with no warnings (all sources touched first, so everything recompiled).
+- `./script/build_and_run.sh --verify`: passed; the app bundle launched and kept running. It reported that the Metal toolchain is missing, so the lens shader is skipped and the SwiftUI glass fallback is used.
+- Snapshot pass in light, dark, `--snapshot-empty`, `--reduce-motion` and dark with `--reduce-motion`: 29 PNGs per full run (27 for never-scanned), no blank frames in the Dashboard, Storage Map, Last Cleanup, review sheet and minimum-window captures that were opened. Extra state runs: scanning at 50%, simulated cleanup, basket flight, disk weather at 93% in light and dark, and a 400-item Storage Map fixture with all eligible tiles selected and the collapse.
+- `CleanupReviewSheet` snapshots with and without `--reduce-motion`: `cmp` reported the PNGs identical in light and in dark (SHA-1 `31dff86f…` for light). The same flag does change the Dashboard capture, so the comparison is not vacuous.
+- 3,000-tile Storage Map benchmark (`--map-fixture 3000 --map-benchmark`): mean 8.36 ms per frame, p95 9.05 ms, max 9.78 ms, 300 of 300 frames rendered, lens at its resting tile, shader off (SwiftUI glass). Pass (limit 16.7 ms).
+- Not verified: everything under Pending manual verification (VoiceOver, keyboard-only pass, Instruments, live menu bar, Metal lens shader, occluded-window pause, midnight label refresh, permanent-delete Return key). The Metal shader could not be built on this machine, so only the fallback was measured.
+- Safety: no cleanup confirmation was activated and no files were moved to Trash. The review sheet snapshot only displays sample items.
