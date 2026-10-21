@@ -50,10 +50,15 @@ struct MenuBarLabel: View {
   @ObservedObject var model: AppModel
   @ObservedObject var ticker: DayTicker
 
+  /// The live safe bytes as of the last moment no scan was running.
+  @State private var heldSafeBytes: Int64 = 0
+
   var body: some View {
     let days = MenuBarPresentation.daysSinceCleanup(
       log: model.cleanupLog, firstLaunch: model.firstLaunchDate, now: ticker.now)
-    let safeBytes = model.session?.summary.safeToDeleteBytes ?? 0
+    let live = model.summary.safeToDeleteBytes
+    let safeBytes = MenuBarPresentation.displayedSafeBytes(
+      live: live, isScanning: model.isScanning, held: heldSafeBytes)
     let stage = MenuBarPresentation.sproutStage(daysSinceCleanup: days, safeBytes: safeBytes)
     let label = MenuBarPresentation.sizeLabel(daysSinceCleanup: days, safeBytes: safeBytes)
     HStack(spacing: 3) {
@@ -62,5 +67,9 @@ struct MenuBarLabel: View {
     }
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(MenuBarPresentation.accessibilityLabel(sizeLabel: label))
+    .onAppear { if !model.isScanning { heldSafeBytes = live } }
+    .onChange(of: live) { _, newValue in
+      if !model.isScanning { heldSafeBytes = newValue }
+    }
   }
 }

@@ -22,6 +22,13 @@ struct MenuBarPresentationTests {
     #expect(MenuBarPresentation.sizeLabel(daysSinceCleanup: 20, safeBytes: 499_999_999) == nil)
   }
 
+  @Test func displayedBytesHoldDuringScan() {
+    #expect(
+      MenuBarPresentation.displayedSafeBytes(live: 300, isScanning: false, held: 1_200) == 300)
+    #expect(
+      MenuBarPresentation.displayedSafeBytes(live: 300, isScanning: true, held: 1_200) == 1_200)
+  }
+
   @Test func noCleanupLogFallsBackToFirstLaunch() {
     let now = Date(timeIntervalSince1970: 1_800_000_000)
     let firstLaunch = Calendar.current.date(byAdding: .day, value: -9, to: now)!

@@ -15,6 +15,12 @@ public enum MenuBarPresentation {
     return ByteCount.string(safeBytes)
   }
 
+  /// The safe bytes the icon reflects: the live figure normally, but while a scan streams in
+  /// the last value from before it started, so the icon doesn't flicker through partial totals.
+  public static func displayedSafeBytes(live: Int64, isScanning: Bool, held: Int64) -> Int64 {
+    isScanning ? held : live
+  }
+
   /// The menu bar item's accessibility label, extended when the size label shows.
   public static func accessibilityLabel(sizeLabel: String?) -> String {
     guard let sizeLabel else { return "CleanScope" }
