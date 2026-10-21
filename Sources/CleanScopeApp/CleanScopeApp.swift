@@ -5,6 +5,7 @@ import SwiftUI
 struct CleanScopeApp: App {
   @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
   @StateObject private var model = CleanScopeApp.makeModel()
+  @StateObject private var dayTicker = DayTicker()
   @State private var flights = FlightCenter()
   private let previewColorScheme: ColorScheme? =
     ProcessInfo.processInfo.arguments.contains("--dark-preview") ? .dark : nil
@@ -69,8 +70,7 @@ struct CleanScopeApp: App {
         .environmentObject(model.statusMonitor)
         .environmentObject(model.motion)
     } label: {
-      Image(systemName: "leaf.circle")
-        .accessibilityLabel("CleanScope")
+      MenuBarLabel(model: model, ticker: dayTicker)
     }
     .menuBarExtraStyle(.window)
   }

@@ -104,6 +104,72 @@
       await measure("minimised")
     }
 
+    /// Writes `menubar-sprout-0/1/2.png` (each stage on a light and a dark menu bar, enlarged and
+    /// at real size) and `menubar-sprout-label.png` (stage 2 with its size label).
+    private static func captureSprouts(into directory: URL) {
+      func tinted(_ image: NSImage, _ color: NSColor) -> NSImage {
+        NSImage(size: image.size, flipped: false) { rect in
+          image.draw(in: rect)
+          color.set()
+          rect.fill(using: .sourceIn)
+          return true
+        }
+      }
+      func panel(stage: Int, label: String?, dark: Bool, scale: CGFloat) -> NSImage {
+        let ink: NSColor = dark ? .white : .black
+        let icon = tinted(SproutTemplateImage.image(stage: stage), ink)
+        let font = NSFont.menuBarFont(ofSize: 0)
+        let text = NSAttributedString(
+          string: label ?? "", attributes: [.font: font, .foregroundColor: ink])
+        let textWidth = label == nil ? 0 : ceil(text.size().width) + 3
+        let size = NSSize(width: 18 + textWidth + 12, height: 24)
+        return NSImage(size: NSSize(width: size.width * scale, height: size.height * scale), flipped: false) {
+          _ in
+          (dark ? NSColor(white: 0.16, alpha: 1) : NSColor(white: 0.93, alpha: 1)).setFill()
+          NSRect(origin: .zero, size: NSSize(width: size.width * scale, height: size.height * scale))
+            .fill()
+          icon.draw(in: NSRect(x: 6 * scale, y: 3 * scale, width: 18 * scale, height: 18 * scale))
+          if label != nil {
+            text.draw(
+              at: NSPoint(x: 6 * scale + 21 * scale, y: (12 - font.pointSize / 2 - 1) * scale))
+          }
+          return true
+        }
+      }
+      func write(_ views: [NSImage], name: String) {
+        let width = views.reduce(0) { $0 + $1.size.width } + CGFloat(views.count - 1) * 8
+        let height = views.map(\.size.height).max() ?? 0
+        let sheet = NSImage(size: NSSize(width: width, height: height), flipped: false) { _ in
+          var x: CGFloat = 0
+          for view in views {
+            view.draw(at: NSPoint(x: x, y: 0), from: .zero, operation: .copy, fraction: 1)
+            x += view.size.width + 8
+          }
+          return true
+        }
+        guard let cg = sheet.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return }
+        try? NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:])?
+          .write(to: directory.appendingPathComponent(name))
+      }
+      for stage in 0..<SproutTemplateImage.stageCount {
+        write(
+          [
+            panel(stage: stage, label: nil, dark: false, scale: 8),
+            panel(stage: stage, label: nil, dark: true, scale: 8),
+            panel(stage: stage, label: nil, dark: false, scale: 1),
+            panel(stage: stage, label: nil, dark: true, scale: 1),
+          ], name: "menubar-sprout-\(stage).png")
+      }
+      let label = MenuBarPresentation.sizeLabel(daysSinceCleanup: 20, safeBytes: 1_200_000_000)
+      write(
+        [
+          panel(stage: 2, label: label, dark: false, scale: 6),
+          panel(stage: 2, label: label, dark: true, scale: 6),
+          panel(stage: 2, label: label, dark: false, scale: 1),
+          panel(stage: 2, label: label, dark: true, scale: 1),
+        ], name: "menubar-sprout-label.png")
+    }
+
     static func run(model: AppModel) async {
       if let count = MapFixture.requestedCount {
         let fixture = MapFixture.make(count: count)
@@ -156,6 +222,8 @@
         try? NSBitmapImageRep(cgImage: thumbnail).representation(using: .png, properties: [:])?
           .write(to: directory.appendingPathComponent(name))
       }
+
+      captureSprouts(into: directory)
 
       for destination in AppModel.Destination.allCases {
         if destination == .lastCleanup, seedsCleanup, model.cleanupSession == nil {

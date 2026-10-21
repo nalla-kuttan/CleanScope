@@ -28,6 +28,13 @@ struct MenuBarContentView: View {
         }
       }
 
+      Button("Review Quick Wins…") {
+        model.destination = .dashboard
+        openMainWindow()
+      }
+      .buttonStyle(.borderedProminent)
+      .controlSize(.small)
+
       VStack(alignment: .leading, spacing: 4) {
         HStack {
           Text("Startup disk")
